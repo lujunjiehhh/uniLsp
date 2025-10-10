@@ -1,0 +1,76 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
+    <id>com.frenchef.IntellijLsp</id>
+
+    <!-- Public plugin name should be written in Title Case.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-name -->
+    <name>IntelliJ LSP Server</name>
+
+    <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
+    <vendor url="https://github.com/frenchef">frenchef</vendor>
+
+    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
+    <description><![CDATA[
+        <h2>IntelliJ LSP Server</h2>
+        <p>
+            Exposes IntelliJ IDEA's powerful code intelligence as a Language Server Protocol (LSP) server,
+            enabling external editors like Neovim, Emacs, and VSCode to leverage IntelliJ's advanced
+            language support for Java, Kotlin, Android, and other JetBrains-supported languages.
+        </p>
+        <h3>Features</h3>
+        <ul>
+            <li><strong>TCP or Unix Domain Socket</strong> transport modes</li>
+            <li><strong>Auto-start</strong> per project with configurable ports</li>
+            <li><strong>Multi-project support</strong> - each project runs its own LSP server instance</li>
+            <li><strong>Core LSP features:</strong>
+                <ul>
+                    <li>Hover documentation</li>
+                    <li>Go to definition</li>
+                    <li>Code completion</li>
+                    <li>Find references</li>
+                    <li>Real-time diagnostics (errors/warnings)</li>
+                </ul>
+            </li>
+            <li><strong>Status bar widget</strong> showing server status and connection count</li>
+        </ul>
+        <h3>Usage</h3>
+        <p>
+            The LSP server automatically starts when a project is opened. Connect your LSP client
+            to the displayed port (default: 2087) or Unix socket path. Configure transport mode
+            and settings in <em>Settings → Tools → IntelliJ LSP Server</em>.
+        </p>
+        <p>
+            <strong>Neovim example:</strong><br>
+            <code>vim.lsp.rpc.connect("127.0.0.1", 2087)</code>
+        </p>
+    ]]></description>
+
+    <!-- Product and plugin compatibility requirements.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <!-- Extension points defined by the plugin.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Application-level settings service -->
+        <applicationService serviceImplementation="com.frenchef.intellijlsp.config.LspSettings"/>
+        
+        <!-- Settings UI -->
+        <applicationConfigurable
+                parentId="tools"
+                instance="com.frenchef.intellijlsp.config.LspConfigurable"
+                id="com.frenchef.intellijlsp.config.LspConfigurable"
+                displayName="IntelliJ LSP Server"/>
+        
+        <!-- Project-level service -->
+        <projectService serviceImplementation="com.frenchef.intellijlsp.services.LspProjectService"/>
+        
+        <!-- Startup activity to auto-start LSP server -->
+        <postStartupActivity implementation="com.frenchef.intellijlsp.LspServerStartupActivity"/>
+        
+        <!-- Status bar widget -->
+        <statusBarWidgetFactory implementation="com.frenchef.intellijlsp.ui.LspStatusWidgetFactory"/>
+    </extensions>
+</idea-plugin>
