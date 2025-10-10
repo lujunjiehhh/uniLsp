@@ -195,20 +195,11 @@ class DocumentHighlightHandler(
         // Identifiers typically have "IDENTIFIER" in their type name
         // Keywords have "KEYWORD" or specific keyword names
         if (elementType.contains("IDENTIFIER", ignoreCase = true)) {
-            log.debug("Element is an identifier: type=$elementType, text='${element.text}'")
+            log.info("Element is an identifier: type=$elementType, text='${element.text}'")
             return true
         }
         
-        // Check if it's a LeafPsiElement with identifier-like text (fallback)
-        // The parent check in getDocumentHighlights will determine if it's actually an identifier
-        val text = element.text ?: return false
-        
-        if (text.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_]*$"))) {
-            log.debug("Element looks like identifier: text='$text', type=$elementType")
-            return true
-        }
-        
-        log.debug("Element is not an identifier: type=$elementType, text='$text'")
+        log.info("Element is not an identifier: type=$elementType, text='${element.text}'")
         return false
     }
 }
