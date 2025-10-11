@@ -8,6 +8,9 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonNull
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
+import java.net.URI
+import java.nio.file.Path
+import java.nio.file.Paths
 
 /**
  * Handles LSP lifecycle methods: initialize, initialized, shutdown, exit.
@@ -60,6 +63,16 @@ class LifecycleHandler(
 
         log.info("Client root URI: ${initParams.rootUri}")
         log.info("Client capabilities received")
+        
+        // Validate that rootUri is within or equal to the project path
+        if (!validateRootUri(initParams.rootUri, project.basePath)) {
+            val errorMsg = "Invalid rootUri: must be equal to or a subfolder of project path"
+            log.warn("$errorMsg. rootUri=${initParams.rootUri}, projectPath=${project.basePath}")
+            throw LspException(
+                ErrorCodes.INVALID_PARAMS,
+                errorMsg
+            )
+        }
 
         val result = InitializeResult(
             capabilities = getServerCapabilities(),
@@ -104,6 +117,46 @@ class LifecycleHandler(
         
         // In a standalone LSP server, this would terminate the process.
         // Here, the client disconnecting will trigger cleanup naturally.
+    }
+
+    /**
+     * Validate that the client's rootUri is equal to or a subfolder of the project path.
+     * 
+     * @param rootUri The rootUri from the client's initialize request
+     * @param projectBasePath The IntelliJ project base path
+     * @return true if validation passes, false otherwise
+     */
+    private fun validateRootUri(rootUri: String?, projectBasePath: String?): Boolean {
+        // If either is null, reject the connection
+        if (rootUri == null || projectBasePath == null) {
+            log.warn("RootUri validation failed: rootUri or projectBasePath is null")
+            return false
+        }
+        
+        try {
+            // Parse the URI to get the file system path
+            val uri = URI(rootUri)
+            if (uri.scheme != "file") {
+                log.warn("RootUri validation failed: unsupported URI scheme '${uri.scheme}'")
+                return false
+            }
+            
+            // Convert URI to Path and normalize
+            val clientPath: Path = Paths.get(uri).toAbsolutePath().normalize()
+            val projectPath: Path = Paths.get(projectBasePath).toAbsolutePath().normalize()
+            
+            // Accept if client path equals project path OR is a subfolder of project path
+            val isValid = clientPath == projectPath || clientPath.startsWith(projectPath)
+            
+            if (!isValid) {
+                log.warn("RootUri validation failed: clientPath=$clientPath is not within projectPath=$projectPath")
+            }
+            
+            return isValid
+        } catch (e: Exception) {
+            log.error("Error validating rootUri: ${e.message}", e)
+            return false
+        }
     }
 
     /**

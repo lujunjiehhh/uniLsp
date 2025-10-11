@@ -85,6 +85,26 @@ Content-Length: {length}\r\n
 - `shutdown` - Graceful shutdown request
 - `exit` - Server termination
 
+#### RootUri Validation
+During the `initialize` request, the server validates the client's `rootUri` parameter to ensure it matches or is a subfolder of the IntelliJ project path. This validation provides:
+- **Security**: Ensures LSP operations stay within the intended project scope
+- **Correctness**: Prevents PSI operations on files outside the project context
+- **Clarity**: Explicitly defines the working directory relationship
+
+**Validation Rules:**
+- Client's `rootUri` must equal the IntelliJ project base path OR be a subfolder within it
+- Paths are normalized (absolute, canonical separators) before comparison
+- Only `file://` URI scheme is supported
+- If validation fails, the server returns an `INVALID_PARAMS` error (-32602)
+
+**Error Response Example:**
+```json
+{
+  "code": -32602,
+  "message": "Invalid rootUri: must be equal to or a subfolder of project path"
+}
+```
+
 ### 4.2 Document Synchronization (Priority: Critical)
 - `textDocument/didOpen` - Document opened in client
 - `textDocument/didChange` - Incremental document changes
