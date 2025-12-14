@@ -178,9 +178,10 @@ class LifecycleHandler(
             ),
             signatureHelpProvider = null,
             definitionProvider = true,
+            typeDefinitionProvider = true,  // T039: abcoder 兼容
             referencesProvider = true,
             documentHighlightProvider = true,
-            documentSymbolProvider = false,
+            documentSymbolProvider = true,  // T040: abcoder 兼容
             workspaceSymbolProvider = false,
             codeActionProvider = false,
             codeLensProvider = null,
@@ -190,6 +191,42 @@ class LifecycleHandler(
             renameProvider = false,
             documentLinkProvider = null,
             executeCommandProvider = null,
+            // T041: SemanticTokens - abcoder 兼容
+            semanticTokensProvider = SemanticTokensOptions(
+                legend = SemanticTokensLegend(
+                    tokenTypes = listOf(
+                        SemanticTokenTypes.NAMESPACE,
+                        SemanticTokenTypes.TYPE,
+                        SemanticTokenTypes.CLASS,
+                        SemanticTokenTypes.ENUM,
+                        SemanticTokenTypes.INTERFACE,
+                        SemanticTokenTypes.STRUCT,
+                        SemanticTokenTypes.TYPE_PARAMETER,
+                        SemanticTokenTypes.PARAMETER,
+                        SemanticTokenTypes.VARIABLE,
+                        SemanticTokenTypes.PROPERTY,
+                        SemanticTokenTypes.ENUM_MEMBER,
+                        SemanticTokenTypes.FUNCTION,
+                        SemanticTokenTypes.METHOD,
+                        SemanticTokenTypes.KEYWORD,
+                        SemanticTokenTypes.MODIFIER,
+                        SemanticTokenTypes.COMMENT,
+                        SemanticTokenTypes.STRING,
+                        SemanticTokenTypes.NUMBER,
+                        SemanticTokenTypes.OPERATOR
+                    ),
+                    tokenModifiers = listOf(
+                        SemanticTokenModifiers.DECLARATION,
+                        SemanticTokenModifiers.DEFINITION,
+                        SemanticTokenModifiers.READONLY,
+                        SemanticTokenModifiers.STATIC,
+                        SemanticTokenModifiers.DEPRECATED,
+                        SemanticTokenModifiers.ABSTRACT
+                    )
+                ),
+                range = true,
+                full = SemanticTokensFullOptions(delta = false)
+            ),
             experimental = null
         )
     }

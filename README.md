@@ -14,8 +14,11 @@ An IntelliJ IDEA plugin that exposes IntelliJ's powerful code intelligence as a 
 
 - ✅ **Hover** - Documentation and type information on hover
 - ✅ **Go to Definition** - Jump to symbol definitions
+- ✅ **Go to Type Definition** - Jump to type declarations
 - ✅ **Code Completion** - Intelligent code completion
 - ✅ **Find References** - Find all references to a symbol
+- ✅ **Document Symbols** - Outline view / symbol list
+- ✅ **Semantic Tokens** - Rich semantic highlighting
 - ✅ **Diagnostics** - Real-time errors and warnings
 - ✅ **Document Synchronization** - Incremental document updates
 
@@ -50,6 +53,7 @@ The built plugin will be in `build/distributions/IntellijLsp-1.0-SNAPSHOT.zip`
 ### Status Bar
 
 The status bar widget displays:
+
 - **LSP: :2087 (1)** - Running on TCP port 2087 with 1 connected client
 - **LSP: UDS (0)** - Running on Unix Domain Socket with 0 clients
 - **LSP: Not started** - Server hasn't started yet
@@ -72,7 +76,7 @@ function M.setup()
     -- Connect to IntelliJ LSP server
     -- Change port if your server uses a different one (check status bar in IntelliJ)
     local client = vim.lsp.rpc.connect("127.0.0.1", 2087)
-    
+
     -- Start the client
     local bufnr = vim.api.nvim_get_current_buf()
     vim.lsp.start({
@@ -159,22 +163,25 @@ Create a VSCode extension or use a generic LSP client extension with these setti
 
 ```json
 {
-    "languageServerExample.port": 2087,
-    "languageServerExample.host": "127.0.0.1"
+  "languageServerExample.port": 2087,
+  "languageServerExample.host": "127.0.0.1"
 }
 ```
 
 ## Usage Workflow
 
 1. **Open your project in IntelliJ IDEA**
+
    - The LSP server starts automatically
    - Check the status bar to see the port number
 
 2. **Open the same project in your editor (e.g., Neovim)**
+
    - Configure your LSP client to connect to the port shown in IntelliJ
    - The connection will be established automatically
 
 3. **Work in your external editor**
+
    - Use hover, go to definition, completion, etc.
    - IntelliJ provides all the code intelligence
 
@@ -187,6 +194,7 @@ Create a VSCode extension or use a generic LSP client extension with these setti
 ### Document Synchronization
 
 - **Changes in Neovim → IntelliJ**: Lower priority
+
   - Changes made in your external editor are tracked by the LSP server
   - However, they are NOT immediately synchronized to IntelliJ's PSI
   - When you save a file, IntelliJ will pick up the changes from disk
@@ -309,4 +317,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [Language Server Protocol Specification](https://microsoft.github.io/language-server-protocol/)
 - [IntelliJ Platform Plugin SDK](https://plugins.jetbrains.com/docs/intellij/)
 - [Neovim LSP Documentation](https://neovim.io/doc/user/lsp.html)
-

@@ -250,6 +250,7 @@ data class ServerCapabilities(
     val completionProvider: CompletionOptions?,
     val signatureHelpProvider: SignatureHelpOptions?,
     val definitionProvider: Boolean?,
+    val typeDefinitionProvider: Boolean?,  // T031: abcoder 兼容
     val referencesProvider: Boolean?,
     val documentHighlightProvider: Boolean?,
     val documentSymbolProvider: Boolean?,
@@ -262,6 +263,7 @@ data class ServerCapabilities(
     val renameProvider: Boolean?,
     val documentLinkProvider: DocumentLinkOptions?,
     val executeCommandProvider: ExecuteCommandOptions?,
+    val semanticTokensProvider: SemanticTokensOptions?,  // T033: abcoder 兼容
     val experimental: JsonElement?
 )
 
@@ -377,3 +379,173 @@ enum class CompletionTriggerKind(val value: Int) {
     TRIGGER_FOR_INCOMPLETE_COMPLETIONS(3)
 }
 
+// ============================================================================
+// T031: TypeDefinition 参数 (abcoder 兼容)
+// ============================================================================
+
+// TypeDefinitionParams 与 TextDocumentPositionParams 相同，可复用
+
+// ============================================================================
+// T032: DocumentSymbol 类型 (abcoder 兼容)
+// ============================================================================
+
+/**
+ * 文档符号请求参数
+ */
+data class DocumentSymbolParams(
+    val textDocument: TextDocumentIdentifier
+)
+
+/**
+ * 层级文档符号（LSP 3.17）
+ */
+data class DocumentSymbol(
+    val name: String,
+    val detail: String?,
+    val kind: SymbolKind,
+    val tags: List<Int>?,
+    val deprecated: Boolean?,
+    val range: Range,
+    val selectionRange: Range,
+    val children: List<DocumentSymbol>?
+)
+
+/**
+ * 扁平符号信息（兼容旧客户端）
+ */
+data class SymbolInformation(
+    val name: String,
+    val kind: SymbolKind,
+    val tags: List<Int>?,
+    val deprecated: Boolean?,
+    val location: Location,
+    val containerName: String?
+)
+
+/**
+ * 符号类型枚举（LSP 3.17）
+ */
+enum class SymbolKind(val value: Int) {
+    FILE(1),
+    MODULE(2),
+    NAMESPACE(3),
+    PACKAGE(4),
+    CLASS(5),
+    METHOD(6),
+    PROPERTY(7),
+    FIELD(8),
+    CONSTRUCTOR(9),
+    ENUM(10),
+    INTERFACE(11),
+    FUNCTION(12),
+    VARIABLE(13),
+    CONSTANT(14),
+    STRING(15),
+    NUMBER(16),
+    BOOLEAN(17),
+    ARRAY(18),
+    OBJECT(19),
+    KEY(20),
+    NULL(21),
+    ENUM_MEMBER(22),
+    STRUCT(23),
+    EVENT(24),
+    OPERATOR(25),
+    TYPE_PARAMETER(26)
+}
+
+// ============================================================================
+// T033: SemanticTokens 类型 (abcoder 兼容)
+// ============================================================================
+
+/**
+ * SemanticTokens 服务端能力选项
+ */
+data class SemanticTokensOptions(
+    val legend: SemanticTokensLegend,
+    val range: Boolean?,
+    val full: SemanticTokensFullOptions?
+)
+
+/**
+ * Full tokens 选项（支持 delta）
+ */
+data class SemanticTokensFullOptions(
+    val delta: Boolean?
+)
+
+/**
+ * SemanticTokens Legend（定义 tokenTypes 和 tokenModifiers）
+ */
+data class SemanticTokensLegend(
+    val tokenTypes: List<String>,
+    val tokenModifiers: List<String>
+)
+
+/**
+ * SemanticTokens 请求参数（full）
+ */
+data class SemanticTokensParams(
+    val textDocument: TextDocumentIdentifier
+)
+
+/**
+ * SemanticTokens 请求参数（range）
+ */
+data class SemanticTokensRangeParams(
+    val textDocument: TextDocumentIdentifier,
+    val range: Range
+)
+
+/**
+ * SemanticTokens 响应
+ */
+data class SemanticTokens(
+    val resultId: String?,
+    val data: List<Int>
+)
+
+/**
+ * 标准 Token Types（LSP 3.17）
+ */
+object SemanticTokenTypes {
+    const val NAMESPACE = "namespace"
+    const val TYPE = "type"
+    const val CLASS = "class"
+    const val ENUM = "enum"
+    const val INTERFACE = "interface"
+    const val STRUCT = "struct"
+    const val TYPE_PARAMETER = "typeParameter"
+    const val PARAMETER = "parameter"
+    const val VARIABLE = "variable"
+    const val PROPERTY = "property"
+    const val ENUM_MEMBER = "enumMember"
+    const val EVENT = "event"
+    const val FUNCTION = "function"
+    const val METHOD = "method"
+    const val MACRO = "macro"
+    const val KEYWORD = "keyword"
+    const val MODIFIER = "modifier"
+    const val COMMENT = "comment"
+    const val STRING = "string"
+    const val NUMBER = "number"
+    const val REGEXP = "regexp"
+    const val OPERATOR = "operator"
+    const val DECORATOR = "decorator"
+}
+
+/**
+ * 标准 Token Modifiers（LSP 3.17）
+ */
+object SemanticTokenModifiers {
+    const val DECLARATION = "declaration"
+    const val DEFINITION = "definition"
+    const val READONLY = "readonly"
+    const val STATIC = "static"
+    const val DEPRECATED = "deprecated"
+    const val ABSTRACT = "abstract"
+    const val ASYNC = "async"
+    const val MODIFICATION = "modification"
+    const val DOCUMENTATION = "documentation"
+    const val DEFAULT_LIBRARY = "defaultLibrary"
+}
