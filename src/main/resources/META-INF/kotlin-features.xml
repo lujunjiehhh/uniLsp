@@ -1,0 +1,7 @@
+<!-- Kotlin plugin features (optional) -->
+<idea-plugin>
+    <!-- K2 mode compatibility declaration -->
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK2="true" supportsK1="true"/>
+    </extensions>
+</idea-plugin>

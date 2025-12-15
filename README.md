@@ -12,15 +12,32 @@ An IntelliJ IDEA plugin that exposes IntelliJ's powerful code intelligence as a 
 
 ### Supported LSP Features
 
+#### Core Features
+
 - ✅ **Hover** - Documentation and type information on hover
 - ✅ **Go to Definition** - Jump to symbol definitions
 - ✅ **Go to Type Definition** - Jump to type declarations
+- ✅ **Go to Implementation** - Jump to interface implementations
 - ✅ **Code Completion** - Intelligent code completion
 - ✅ **Find References** - Find all references to a symbol
 - ✅ **Document Symbols** - Outline view / symbol list
+- ✅ **Workspace Symbols** - Project-wide symbol search
 - ✅ **Semantic Tokens** - Rich semantic highlighting
 - ✅ **Diagnostics** - Real-time errors and warnings
 - ✅ **Document Synchronization** - Incremental document updates
+- ✅ **Document Highlight** - Highlight symbol occurrences
+- ✅ **Signature Help** - Function signature information
+- ✅ **Code Actions** - Quick fixes and refactorings
+- ✅ **Inlay Hints** - Inline type and parameter hints
+- ✅ **Formatting** - Code formatting (full document and range)
+
+#### Advanced Features
+
+- ✅ **Rename Refactoring** - Safe cross-file rename with conflict detection
+- ✅ **Call Hierarchy** - Explore caller/callee relationships
+- ✅ **Type Hierarchy** - Navigate class inheritance hierarchies
+- ✅ **Workspace Folders** - Multi-root workspace support
+- ✅ **File Watching** - External file change notifications
 
 ## Installation
 
@@ -289,14 +306,13 @@ src/main/kotlin/com/frenchef/intellijlsp/
 
 Planned features for future versions:
 
-- [ ] Workspace symbol search
-- [ ] Code formatting
-- [ ] Code actions (quick fixes)
-- [ ] Semantic tokens (better syntax highlighting)
-- [ ] Signature help
-- [ ] Bidirectional document sync
-- [ ] Rename refactoring
-- [ ] Call/type hierarchy
+- [ ] Bidirectional document sync (IntelliJ → Client)
+- [ ] On-type formatting
+- [ ] Document links
+- [ ] Code lens
+- [ ] Folding range
+- [ ] Selection range
+- [ ] Linked editing range
 
 ## Contributing
 

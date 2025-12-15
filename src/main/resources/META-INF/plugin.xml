@@ -5,7 +5,7 @@
 
     <!-- Public plugin name should be written in Title Case.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-name -->
-    <name>IntelliJ LSP Server</name>
+    <name>JetBrains LSP Server</name>
 
     <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
     <vendor url="https://github.com/frenchef">frenchef</vendor>
@@ -50,6 +50,10 @@
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
+    <!-- Java plugin dependency for UAST and PSI APIs -->
+    <depends>com.intellij.java</depends>
+    <!-- Optional Kotlin dependency for K2 compatibility declaration -->
+    <depends optional="true" config-file="kotlin-features.xml">org.jetbrains.kotlin</depends>
 
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->

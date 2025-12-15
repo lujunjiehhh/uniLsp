@@ -20,13 +20,15 @@ dependencies {
         create("IC", "2025.1.4.1")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
-        // Add necessary plugin dependencies for compilation here, example:
-        // bundledPlugin("com.intellij.java")
+        // Add plugin dependencies for Kotlin and Java PSI support
+        bundledPlugin("com.intellij.java")
+        bundledPlugin("org.jetbrains.kotlin")
     }
 
     // Kotlin Coroutines for async I/O
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.8.1")
+
     // JUnit 5 测试依赖
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
