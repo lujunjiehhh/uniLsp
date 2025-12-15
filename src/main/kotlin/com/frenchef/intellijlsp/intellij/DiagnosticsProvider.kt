@@ -99,13 +99,19 @@ class DiagnosticsProvider(private val project: Project) {
                 document,
                 com.intellij.openapi.util.TextRange(startOffset, endOffset)
             )
+
+            // Extract message: prefer description, fallback to toolTip with HTML stripped
+            val message = extractMessage(info)
+            if (message.isNullOrBlank()) {
+                return null // Skip diagnostics with no meaningful message
+            }
             
             return Diagnostic(
                 range = range,
                 severity = severity,
                 code = null,
                 source = "IntelliJ",
-                message = info.description ?: "Unknown issue"
+                message = message
             )
         } catch (e: Exception) {
             log.warn("Error converting highlight info to diagnostic", e)
@@ -114,14 +120,36 @@ class DiagnosticsProvider(private val project: Project) {
     }
 
     /**
+     * Extract a user-readable message from HighlightInfo.
+     * Tries description first, then toolTip (with HTML stripped).
+     */
+    private fun extractMessage(info: HighlightInfo): String? {
+        // First, try description
+        val description = info.description
+        if (!description.isNullOrBlank()) {
+            return description
+        }
+
+        // Fallback to toolTip, strip HTML tags
+        val toolTip = info.toolTip
+        if (!toolTip.isNullOrBlank()) {
+            return toolTip.replace(Regex("<[^>]*>"), "").trim()
+        }
+
+        return null
+    }
+
+    /**
      * Convert IntelliJ HighlightSeverity to LSP DiagnosticSeverity.
+     * Note: HighlightSeverity.INFORMATION is excluded as it typically contains
+     * editor UI hints (e.g., "Open in browser") rather than actual diagnostics.
      */
     private fun highlightSeverityToDiagnosticSeverity(severity: HighlightSeverity): DiagnosticSeverity? {
         return when {
             severity == HighlightSeverity.ERROR -> DiagnosticSeverity.ERROR
             severity == HighlightSeverity.WARNING -> DiagnosticSeverity.WARNING
             severity == HighlightSeverity.WEAK_WARNING -> DiagnosticSeverity.INFORMATION
-            severity == HighlightSeverity.INFORMATION -> DiagnosticSeverity.HINT
+            // INFORMATION severity is excluded - it contains editor hints, not diagnostics
             else -> null // Ignore other severities
         }
     }

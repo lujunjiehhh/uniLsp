@@ -120,6 +120,9 @@ class LspServerStartupActivity : ProjectActivity {
                 )
             diagnosticsHandler.start()
 
+            // Store diagnostics handler in project service for access by other handlers
+            projectService.setDiagnosticsHandler(diagnosticsHandler)
+
             // Register typeDefinition handler (abcoder 兼容)
             val typeDefinitionHandler =
                 com.frenchef.intellijlsp.handlers.TypeDefinitionHandler(

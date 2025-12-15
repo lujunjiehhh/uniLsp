@@ -1,9 +1,9 @@
 package com.frenchef.intellijlsp.handlers
 
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.DidChangeWorkspaceFoldersParams
 import com.frenchef.intellijlsp.protocol.models.WorkspaceFolder
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
@@ -18,7 +18,7 @@ class WorkspaceFoldersHandler(
     private val jsonRpcHandler: JsonRpcHandler
 ) {
     private val log = logger<WorkspaceFoldersHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     /** 当前工作区文件夹列表 */
     private val workspaceFolders = mutableListOf<WorkspaceFolder>()

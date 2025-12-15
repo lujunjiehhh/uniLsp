@@ -1,7 +1,6 @@
 package com.frenchef.intellijlsp.protocol
 
 import com.frenchef.intellijlsp.protocol.models.*
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
@@ -17,7 +16,7 @@ import com.intellij.openapi.project.Project
  */
 class JsonRpcHandler(private val project: Project) {
     private val log = logger<JsonRpcHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     // Handler registry
     private val requestHandlers = mutableMapOf<String, RequestHandler>()

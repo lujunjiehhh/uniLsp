@@ -3,10 +3,10 @@ package com.frenchef.intellijlsp.handlers
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.TypeHierarchyProvider
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.TypeHierarchyPrepareParams
 import com.frenchef.intellijlsp.protocol.models.TypeHierarchySubtypesParams
 import com.frenchef.intellijlsp.protocol.models.TypeHierarchySupertypesParams
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -27,7 +27,7 @@ class TypeHierarchyHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<TypeHierarchyHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
     private val provider = TypeHierarchyProvider(project)
 
     /** 注册 Type Hierarchy 相关 handlers */

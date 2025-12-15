@@ -1,11 +1,11 @@
 package com.frenchef.intellijlsp.services
 
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.ApplyWorkspaceEditParams
 import com.frenchef.intellijlsp.protocol.models.ApplyWorkspaceEditResult
 import com.frenchef.intellijlsp.protocol.models.ClientCapabilities
 import com.frenchef.intellijlsp.protocol.models.WorkspaceEdit
-import com.google.gson.Gson
 import com.intellij.openapi.diagnostic.logger
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -25,7 +25,7 @@ class ApplyEditService(
     private val clientCapabilitiesProvider: () -> ClientCapabilities?
 ) {
     private val log = logger<ApplyEditService>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     companion object {
         /** workspace/applyEdit 方法名 */

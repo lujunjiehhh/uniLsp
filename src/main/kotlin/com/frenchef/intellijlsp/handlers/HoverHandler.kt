@@ -4,19 +4,20 @@ import com.frenchef.intellijlsp.config.LspSettings
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
-import com.frenchef.intellijlsp.protocol.models.*
-import com.google.gson.Gson
+import com.frenchef.intellijlsp.protocol.LspGson
+import com.frenchef.intellijlsp.protocol.models.Hover
+import com.frenchef.intellijlsp.protocol.models.MarkupContent
+import com.frenchef.intellijlsp.protocol.models.MarkupKind
+import com.frenchef.intellijlsp.protocol.models.TextDocumentPositionParams
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.project.Project
 import com.intellij.platform.backend.documentation.DocumentationResult
 import com.intellij.platform.backend.documentation.DocumentationTarget
 import com.intellij.platform.backend.documentation.DocumentationTargetProvider
 import com.intellij.platform.backend.documentation.PsiDocumentationTargetProvider
 import com.intellij.psi.PsiManager
-import com.intellij.psi.util.PsiTreeUtil
 
 /**
  * Handles textDocument/hover requests.
@@ -28,7 +29,7 @@ class HoverHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<HoverHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     fun register() {
         jsonRpcHandler.registerRequestHandler("textDocument/hover", this::handleHover)

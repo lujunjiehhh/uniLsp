@@ -3,11 +3,11 @@ package com.frenchef.intellijlsp.handlers
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.Location
 import com.frenchef.intellijlsp.protocol.models.Position
 import com.frenchef.intellijlsp.protocol.models.Range
 import com.frenchef.intellijlsp.protocol.models.TextDocumentPositionParams
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -25,7 +25,7 @@ class ImplementationHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<ImplementationHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     /** Register the handler for textDocument/implementation requests. */
     fun register() {

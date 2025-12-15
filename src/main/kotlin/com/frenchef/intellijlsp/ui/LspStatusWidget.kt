@@ -6,7 +6,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
-import com.intellij.openapi.wm.WindowManager
 import com.intellij.util.Consumer
 import java.awt.Component
 import java.awt.event.MouseEvent
@@ -64,12 +63,8 @@ class LspStatusWidget(private val project: Project) : StatusBarWidget, StatusBar
 
     override fun getText(): String {
         val projectService = project.getService(LspProjectService::class.java)
-        val server = projectService?.getServer()
-        
-        if (server == null) {
-            return "LSP: Not started"
-        }
-        
+        val server = projectService?.getServer() ?: return "LSP: Not started"
+
         return if (server.isRunning()) {
             val port = server.getPort()
             val socketPath = server.getSocketPath()
@@ -89,12 +84,8 @@ class LspStatusWidget(private val project: Project) : StatusBarWidget, StatusBar
 
     override fun getTooltipText(): String? {
         val projectService = project.getService(LspProjectService::class.java)
-        val server = projectService?.getServer()
-        
-        if (server == null) {
-            return "LSP server is not started"
-        }
-        
+        val server = projectService?.getServer() ?: return "LSP server is not started"
+
         if (!server.isRunning()) {
             return "LSP server is stopped"
         }
@@ -110,7 +101,7 @@ class LspStatusWidget(private val project: Project) : StatusBarWidget, StatusBar
         }
     }
 
-    override fun getClickConsumer(): Consumer<MouseEvent>? {
+    override fun getClickConsumer(): Consumer<MouseEvent> {
         return Consumer { _ ->
             // Could open settings or tool window on click
             // For now, just trigger an immediate update

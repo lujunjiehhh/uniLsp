@@ -3,9 +3,9 @@ package com.frenchef.intellijlsp.handlers
 import com.frenchef.intellijlsp.intellij.CodeActionProvider
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.CodeAction
 import com.frenchef.intellijlsp.protocol.models.CodeActionParams
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -21,7 +21,7 @@ class CodeActionHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<CodeActionHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
     private val codeActionProvider = CodeActionProvider(project)
 
     /** Register the handler for textDocument/codeAction requests. */

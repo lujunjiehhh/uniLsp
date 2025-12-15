@@ -1,6 +1,5 @@
 package com.frenchef.intellijlsp.protocol
 
-import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.intellij.openapi.diagnostic.logger
@@ -16,7 +15,7 @@ import java.nio.charset.StandardCharsets
  */
 class MessageReader(private val input: InputStream) {
     private val log = logger<MessageReader>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     /**
      * Read the next message from the input stream.

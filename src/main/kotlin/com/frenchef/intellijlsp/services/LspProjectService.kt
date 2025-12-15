@@ -1,11 +1,12 @@
 package com.frenchef.intellijlsp.services
 
+import com.frenchef.intellijlsp.handlers.DiagnosticsHandler
+import com.frenchef.intellijlsp.server.LspServer
+import com.frenchef.intellijlsp.server.LspServerManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
-import com.frenchef.intellijlsp.server.LspServer
-import com.frenchef.intellijlsp.server.LspServerManager
 
 /**
  * Project-level service that manages the LSP server lifecycle for a single project.
@@ -15,6 +16,7 @@ import com.frenchef.intellijlsp.server.LspServerManager
 class LspProjectService(private val project: Project) : Disposable {
     private val log = logger<LspProjectService>()
     private var server: LspServer? = null
+    private var diagnosticsHandler: DiagnosticsHandler? = null
 
     /**
      * Get the current server status as a string.
@@ -51,8 +53,24 @@ class LspProjectService(private val project: Project) : Disposable {
         return server
     }
 
+    /**
+     * Set the diagnostics handler (called by LspServerStartupActivity).
+     */
+    fun setDiagnosticsHandler(handler: DiagnosticsHandler) {
+        this.diagnosticsHandler = handler
+    }
+
+    /**
+     * Get the diagnostics handler.
+     */
+    fun getDiagnosticsHandler(): DiagnosticsHandler? {
+        return diagnosticsHandler
+    }
+
     override fun dispose() {
         log.info("Disposing LspProjectService for project: ${project.name}")
+        diagnosticsHandler?.stop()
+        diagnosticsHandler = null
         val srv = server
         if (srv != null) {
             LspServerManager.stopServer(srv)

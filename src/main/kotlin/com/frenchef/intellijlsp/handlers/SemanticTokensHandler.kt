@@ -4,8 +4,9 @@ import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.intellij.SemanticTokensProvider
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
-import com.frenchef.intellijlsp.protocol.models.*
-import com.google.gson.Gson
+import com.frenchef.intellijlsp.protocol.LspGson
+import com.frenchef.intellijlsp.protocol.models.SemanticTokensParams
+import com.frenchef.intellijlsp.protocol.models.SemanticTokensRangeParams
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -20,7 +21,7 @@ class SemanticTokensHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<SemanticTokensHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
     private val tokensProvider = SemanticTokensProvider(project)
 
     fun register() {

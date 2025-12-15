@@ -11,8 +11,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.PsiManager
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -142,18 +140,19 @@ class DiagnosticsHandler(
      */
     private fun broadcastDiagnostics(params: PublishDiagnosticsParams) {
         try {
+            val gson = com.frenchef.intellijlsp.protocol.LspGson.instance
             when (server) {
                 is TcpLspServer -> {
                     val notification = com.frenchef.intellijlsp.protocol.models.LspNotification(
                         method = "textDocument/publishDiagnostics",
-                        params = com.google.gson.Gson().toJsonTree(params)
+                        params = gson.toJsonTree(params)
                     )
                     server.broadcast(notification)
                 }
                 is UdsLspServer -> {
                     val notification = com.frenchef.intellijlsp.protocol.models.LspNotification(
                         method = "textDocument/publishDiagnostics",
-                        params = com.google.gson.Gson().toJsonTree(params)
+                        params = gson.toJsonTree(params)
                     )
                     server.broadcast(notification)
                 }

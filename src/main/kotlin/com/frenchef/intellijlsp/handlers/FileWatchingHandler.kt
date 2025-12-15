@@ -1,9 +1,9 @@
 package com.frenchef.intellijlsp.handlers
 
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.DidChangeWatchedFilesParams
 import com.frenchef.intellijlsp.protocol.models.FileChangeType
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
@@ -19,7 +19,7 @@ class FileWatchingHandler(
     private val jsonRpcHandler: JsonRpcHandler
 ) {
     private val log = logger<FileWatchingHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     /** 注册 File Watching handler */
     fun register() {

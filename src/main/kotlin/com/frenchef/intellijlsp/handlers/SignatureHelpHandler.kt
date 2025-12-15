@@ -4,8 +4,8 @@ import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.intellij.SignatureHelpProvider
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.SignatureHelpParams
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -24,7 +24,7 @@ class SignatureHelpHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<SignatureHelpHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
     private val signatureHelpProvider = SignatureHelpProvider(project)
 
     /** Register the handler for textDocument/signatureHelp requests. */

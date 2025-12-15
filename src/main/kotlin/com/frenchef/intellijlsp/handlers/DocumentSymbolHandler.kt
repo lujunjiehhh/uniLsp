@@ -4,8 +4,9 @@ import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.DocumentSymbolProvider
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
-import com.frenchef.intellijlsp.protocol.models.*
-import com.google.gson.Gson
+import com.frenchef.intellijlsp.protocol.LspGson
+import com.frenchef.intellijlsp.protocol.models.DocumentSymbol
+import com.frenchef.intellijlsp.protocol.models.DocumentSymbolParams
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -20,7 +21,7 @@ class DocumentSymbolHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<DocumentSymbolHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
     private val symbolProvider = DocumentSymbolProvider(project)
 
     fun register() {

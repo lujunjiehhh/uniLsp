@@ -3,8 +3,10 @@ package com.frenchef.intellijlsp.handlers
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
-import com.frenchef.intellijlsp.protocol.models.*
-import com.google.gson.Gson
+import com.frenchef.intellijlsp.protocol.LspGson
+import com.frenchef.intellijlsp.protocol.models.DocumentHighlight
+import com.frenchef.intellijlsp.protocol.models.DocumentHighlightKind
+import com.frenchef.intellijlsp.protocol.models.TextDocumentPositionParams
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -23,7 +25,7 @@ class DocumentHighlightHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<DocumentHighlightHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     fun register() {
         jsonRpcHandler.registerRequestHandler("textDocument/documentHighlight", this::handleDocumentHighlight)

@@ -3,10 +3,10 @@ package com.frenchef.intellijlsp.handlers
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.FormattingProvider
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.DocumentFormattingParams
 import com.frenchef.intellijlsp.protocol.models.DocumentRangeFormattingParams
 import com.frenchef.intellijlsp.protocol.models.TextEdit
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -23,7 +23,7 @@ class FormattingHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<FormattingHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
     private val formattingProvider = FormattingProvider(project)
 
     /** Register the handlers for formatting requests. */

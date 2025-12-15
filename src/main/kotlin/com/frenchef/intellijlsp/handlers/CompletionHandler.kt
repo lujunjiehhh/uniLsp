@@ -4,9 +4,9 @@ import com.frenchef.intellijlsp.intellij.CompletionProvider
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.CompletionList
 import com.frenchef.intellijlsp.protocol.models.CompletionParams
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -24,7 +24,7 @@ class CompletionHandler(
     private val completionProvider: CompletionProvider
 ) {
     private val log = logger<CompletionHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     fun register() {
         jsonRpcHandler.registerRequestHandler("textDocument/completion", this::handleCompletion)

@@ -2,8 +2,8 @@ package com.frenchef.intellijlsp.handlers
 
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.*
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx
 import com.intellij.codeInsight.daemon.impl.HighlightInfo
@@ -35,7 +35,7 @@ class CodeActionResolveHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<CodeActionResolveHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     /** 注册 codeAction/resolve handler */
     fun register() {

@@ -2,9 +2,12 @@ package com.frenchef.intellijlsp.handlers
 
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
-import com.frenchef.intellijlsp.protocol.LspException
-import com.frenchef.intellijlsp.protocol.models.*
-import com.google.gson.Gson
+import com.frenchef.intellijlsp.protocol.LspGson
+import com.frenchef.intellijlsp.protocol.models.DidChangeTextDocumentParams
+import com.frenchef.intellijlsp.protocol.models.DidCloseTextDocumentParams
+import com.frenchef.intellijlsp.protocol.models.DidOpenTextDocumentParams
+import com.frenchef.intellijlsp.protocol.models.DidSaveTextDocumentParams
+import com.frenchef.intellijlsp.services.LspProjectService
 import com.google.gson.JsonElement
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
@@ -18,7 +21,7 @@ class DocumentSyncHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<DocumentSyncHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     fun register() {
         jsonRpcHandler.registerNotificationHandler("textDocument/didOpen", this::handleDidOpen)
@@ -78,9 +81,9 @@ class DocumentSyncHandler(
                 version = doc.version,
                 changes = didChangeParams.contentChanges
             )
-            
-            // Note: For now, we don't immediately sync changes to IntelliJ
-            // The user will save the file, and IntelliJ will pick it up from disk
+
+            // Trigger diagnostics refresh for this file
+            triggerDiagnosticsRefresh(doc.uri)
             
         } catch (e: Exception) {
             log.error("Error handling didChange", e)
@@ -129,10 +132,23 @@ class DocumentSyncHandler(
             documentManager.saveDocument(uri)
             
             // After save, IntelliJ will re-parse the file and update its analysis
-            // We can then publish updated diagnostics
+            // Trigger diagnostics refresh
+            triggerDiagnosticsRefresh(uri)
             
         } catch (e: Exception) {
             log.error("Error handling didSave", e)
+        }
+    }
+
+    /**
+     * Trigger diagnostics refresh for a file.
+     */
+    private fun triggerDiagnosticsRefresh(uri: String) {
+        try {
+            val projectService = project.getService(LspProjectService::class.java)
+            projectService?.getDiagnosticsHandler()?.publishDiagnosticsForFile(uri)
+        } catch (e: Exception) {
+            log.warn("Error triggering diagnostics refresh for $uri", e)
         }
     }
 }

@@ -3,9 +3,9 @@ package com.frenchef.intellijlsp.handlers
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.InlayHintsProvider
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.InlayHint
 import com.frenchef.intellijlsp.protocol.models.InlayHintParams
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -22,7 +22,7 @@ class InlayHintsHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<InlayHintsHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
     private val inlayHintsProvider = InlayHintsProvider(project)
 
     /** Register the handler for textDocument/inlayHint requests. */

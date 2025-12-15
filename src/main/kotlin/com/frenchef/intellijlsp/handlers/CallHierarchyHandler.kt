@@ -3,10 +3,10 @@ package com.frenchef.intellijlsp.handlers
 import com.frenchef.intellijlsp.intellij.CallHierarchyProvider
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.CallHierarchyIncomingCallsParams
 import com.frenchef.intellijlsp.protocol.models.CallHierarchyOutgoingCallsParams
 import com.frenchef.intellijlsp.protocol.models.CallHierarchyPrepareParams
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -27,7 +27,7 @@ class CallHierarchyHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<CallHierarchyHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
     private val provider = CallHierarchyProvider(project)
 
     /** 注册 Call Hierarchy 相关 handlers */

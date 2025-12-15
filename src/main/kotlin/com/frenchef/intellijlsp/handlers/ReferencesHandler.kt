@@ -3,9 +3,9 @@ package com.frenchef.intellijlsp.handlers
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.Location
 import com.frenchef.intellijlsp.protocol.models.ReferenceParams
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -23,7 +23,7 @@ class ReferencesHandler(
     private val documentManager: DocumentManager
 ) {
     private val log = logger<ReferencesHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     fun register() {
         jsonRpcHandler.registerRequestHandler("textDocument/references", this::handleReferences)
@@ -83,28 +83,42 @@ class ReferencesHandler(
             val locations = mutableListOf<Location>()
             
             try {
-                // Get the target element (what this element refers to)
-                val targetElement = element.reference?.resolve() ?: element
-                
-                // Include the declaration if requested
+                // 找到可搜索的目标元素（PsiNamedElement）
+                val targetElement = findSearchableElement(element)
+                if (targetElement == null) {
+                    log.warn("No searchable element found for: ${element.javaClass.simpleName}")
+                    return@compute locations
+                }
+
+                log.info("Searching references for: ${targetElement.javaClass.simpleName}, name='${(targetElement as? com.intellij.psi.PsiNamedElement)?.name}'")
+
+                // 包含声明位置
                 if (includeDeclaration) {
                     val declLocation = PsiMapper.psiElementToLocation(targetElement)
                     if (declLocation != null) {
                         locations.add(declLocation)
+                        log.info("Added declaration location")
                     }
                 }
-                
-                // Find all references to the target element
-                val query = ReferencesSearch.search(targetElement, targetElement.useScope)
-                
-                for (reference in query.findAll().take(100)) { // Limit to 100 references
+
+                // 使用项目范围搜索引用
+                val searchScope = com.intellij.psi.search.GlobalSearchScope.projectScope(project)
+                val query = ReferencesSearch.search(targetElement, searchScope)
+                val allRefs = query.findAll()
+
+                log.info("Found ${allRefs.size} reference(s) in project")
+
+                for (reference in allRefs.take(100)) { // Limit to 100 references
                     val refElement = reference.element
                     val location = PsiMapper.psiElementToLocation(refElement)
                     
                     if (location != null) {
                         locations.add(location)
+                        log.debug("  Reference at: ${location.uri}:${location.range.start.line}")
                     }
                 }
+
+                log.info("Returning ${locations.size} location(s)")
                 
             } catch (e: Exception) {
                 log.warn("Error getting references", e)
@@ -113,5 +127,29 @@ class ReferencesHandler(
             locations
         }
     }
-}
 
+    /**
+     * Find a searchable element (PsiNamedElement) by walking up the PSI tree.
+     */
+    private fun findSearchableElement(element: com.intellij.psi.PsiElement): com.intellij.psi.PsiElement? {
+        var current: com.intellij.psi.PsiElement? = element
+
+        // 首先尝试解析引用
+        val resolved = element.reference?.resolve()
+        if (resolved != null && resolved is com.intellij.psi.PsiNamedElement) {
+            log.info("Resolved reference to: ${resolved.javaClass.simpleName}")
+            return resolved
+        }
+
+        // 向上遍历找到 PsiNamedElement
+        while (current != null && current !is com.intellij.psi.PsiFile) {
+            if (current is com.intellij.psi.PsiNamedElement) {
+                log.info("Found PsiNamedElement: ${current.javaClass.simpleName}, name='${current.name}'")
+                return current
+            }
+            current = current.parent
+        }
+
+        return null
+    }
+}

@@ -2,8 +2,8 @@ package com.frenchef.intellijlsp.handlers
 
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
 import com.frenchef.intellijlsp.protocol.LspException
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.*
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonNull
 import com.intellij.openapi.diagnostic.logger
@@ -15,7 +15,7 @@ import java.nio.file.Paths
 /** Handles LSP lifecycle methods: initialize, initialized, shutdown, exit. */
 class LifecycleHandler(private val project: Project, private val jsonRpcHandler: JsonRpcHandler) {
     private val log = logger<LifecycleHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
 
     @Volatile
     private var initialized = false

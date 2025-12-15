@@ -2,9 +2,9 @@ package com.frenchef.intellijlsp.handlers
 
 import com.frenchef.intellijlsp.intellij.WorkspaceSymbolProvider
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
+import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.SymbolInformation
 import com.frenchef.intellijlsp.protocol.models.WorkspaceSymbolParams
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
@@ -15,7 +15,7 @@ class WorkspaceSymbolHandler(
     private val jsonRpcHandler: JsonRpcHandler
 ) {
     private val log = logger<WorkspaceSymbolHandler>()
-    private val gson = Gson()
+    private val gson = LspGson.instance
     private val workspaceSymbolProvider = WorkspaceSymbolProvider(project)
 
     /** Register the handler for workspace/symbol requests. */
