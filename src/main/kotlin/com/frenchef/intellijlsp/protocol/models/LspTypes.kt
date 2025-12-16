@@ -219,6 +219,7 @@ data class ServerCapabilities(
     val inlayHintProvider: InlayHintOptions?, // Phase 9: Inlay Hints
     val callHierarchyProvider: Boolean?, // Phase 10: Call Hierarchy (T006)
     val typeHierarchyProvider: Boolean?, // Phase 10: Type Hierarchy (T006)
+    val diagnosticProvider: DiagnosticOptions?, // LSP 3.17: Pull 模式诊断
     val workspace: WorkspaceCapabilities?, // Phase 10: Workspace Folders (T006)
     val experimental: JsonElement?
 )
@@ -815,4 +816,88 @@ data class WorkspaceCapabilities(val workspaceFolders: WorkspaceFoldersServerCap
 data class WorkspaceFoldersServerCapabilities(
     val supported: Boolean? = null,
     val changeNotifications: Boolean? = null
+)
+
+// ============================================================================
+// LSP 3.17: Pull 模式诊断 (textDocument/diagnostic)
+// ============================================================================
+
+/** textDocument/diagnostic 请求参数 */
+data class DocumentDiagnosticParams(
+    /** 要获取诊断的文档 */
+    val textDocument: TextDocumentIdentifier,
+    /** 可选的请求标识符，用于增量更新 */
+    val identifier: String? = null,
+    /** 上一次请求的 resultId，用于增量更新 */
+    val previousResultId: String? = null
+)
+
+/** textDocument/diagnostic 响应 - 完整报告 */
+data class FullDocumentDiagnosticReport(
+    /** 报告类型：固定为 "full" */
+    val kind: String = DocumentDiagnosticReportKind.FULL,
+    /** 可选的结果标识符，用于后续的增量请求 */
+    val resultId: String? = null,
+    /** 诊断列表 */
+    val items: List<Diagnostic>
+)
+
+/** textDocument/diagnostic 响应 - 未改变报告 */
+data class UnchangedDocumentDiagnosticReport(
+    /** 报告类型：固定为 "unchanged" */
+    val kind: String = DocumentDiagnosticReportKind.UNCHANGED,
+    /** 结果标识符 */
+    val resultId: String
+)
+
+/** 诊断报告类型 */
+object DocumentDiagnosticReportKind {
+    const val FULL = "full"
+    const val UNCHANGED = "unchanged"
+}
+
+/** workspace/diagnostic 请求参数 */
+data class WorkspaceDiagnosticParams(
+    /** 可选的请求标识符 */
+    val identifier: String? = null,
+    /** 之前返回的部分结果 tokens */
+    val previousResultIds: List<PreviousResultId>? = null
+)
+
+/** 关联文档 URI 和 resultId */
+data class PreviousResultId(
+    /** 文档 URI */
+    val uri: String,
+    /** 上一次的 resultId */
+    val value: String
+)
+
+/** workspace/diagnostic 响应 */
+data class WorkspaceDiagnosticReport(
+    /** 按文档分组的诊断报告列表 */
+    val items: List<WorkspaceDocumentDiagnosticReport>
+)
+
+/** 工作区诊断的文档级报告 */
+data class WorkspaceDocumentDiagnosticReport(
+    /** 报告类型 */
+    val kind: String,
+    /** 文档 URI */
+    val uri: String,
+    /** 文档版本 */
+    val version: Int? = null,
+    /** 结果标识符 */
+    val resultId: String? = null,
+    /** 诊断列表（仅当 kind == "full" 时） */
+    val items: List<Diagnostic>? = null
+)
+
+/** 诊断服务端能力选项 */
+data class DiagnosticOptions(
+    /** 可选的服务端标识符 */
+    val identifier: String? = null,
+    /** 是否支持跨文档关联诊断 */
+    val interFileDependencies: Boolean = false,
+    /** 是否支持工作区级诊断 */
+    val workspaceDiagnostics: Boolean = false
 )

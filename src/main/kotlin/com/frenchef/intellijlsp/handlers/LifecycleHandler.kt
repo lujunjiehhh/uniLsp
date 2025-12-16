@@ -241,6 +241,11 @@ class LifecycleHandler(private val project: Project, private val jsonRpcHandler:
                 InlayHintOptions(resolveProvider = false), // Phase 9: Inlay Hints
             callHierarchyProvider = true, // Phase 10: Call Hierarchy (T012)
             typeHierarchyProvider = true, // Phase 10: Type Hierarchy (T012)
+            diagnosticProvider = DiagnosticOptions(
+                identifier = "intellij-lsp",
+                interFileDependencies = true,
+                workspaceDiagnostics = false
+            ), // LSP 3.17: Pull 模式诊断
             workspace =
                 WorkspaceCapabilities(
                     workspaceFolders =

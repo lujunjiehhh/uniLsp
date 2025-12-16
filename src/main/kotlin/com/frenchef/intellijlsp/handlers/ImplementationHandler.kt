@@ -1,6 +1,7 @@
 package com.frenchef.intellijlsp.handlers
 
 import com.frenchef.intellijlsp.intellij.DocumentManager
+import com.frenchef.intellijlsp.intellij.LspDecompiledUriResolver
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
 import com.frenchef.intellijlsp.protocol.LspGson
@@ -8,9 +9,9 @@ import com.frenchef.intellijlsp.protocol.models.Location
 import com.frenchef.intellijlsp.protocol.models.Position
 import com.frenchef.intellijlsp.protocol.models.Range
 import com.frenchef.intellijlsp.protocol.models.TextDocumentPositionParams
+import com.frenchef.intellijlsp.util.LspLogger
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.psi.*
 import com.intellij.psi.search.searches.DefinitionsScopedSearch
@@ -24,7 +25,9 @@ class ImplementationHandler(
     private val jsonRpcHandler: JsonRpcHandler,
     private val documentManager: DocumentManager
 ) {
-    private val log = logger<ImplementationHandler>()
+    companion object {
+        private const val TAG = "Implementation"
+    }
     private val gson = LspGson.instance
 
     /** Register the handler for textDocument/implementation requests. */
@@ -33,13 +36,13 @@ class ImplementationHandler(
             "textDocument/implementation",
             this::handleImplementation
         )
-        log.info("ImplementationHandler registered for textDocument/implementation")
+        LspLogger.info(TAG, "ImplementationHandler registered for textDocument/implementation")
     }
 
     /** Handle textDocument/implementation request. */
     private fun handleImplementation(params: JsonElement?): JsonElement? {
         if (params == null || params.isJsonNull) {
-            log.debug("Implementation: null params received")
+            LspLogger.debug(TAG, "null params received")
             return gson.toJsonTree(emptyList<Location>())
         }
 
@@ -48,43 +51,31 @@ class ImplementationHandler(
             val uri = implParams.textDocument.uri
             val position = implParams.position
 
-            log.info(
-                "Implementation requested for $uri at line ${position.line}, char ${position.character}"
+            LspLogger.info(
+                TAG,
+                "requested for $uri at line ${position.line}, char ${position.character}"
             )
 
-            val virtualFile =
-                documentManager.getVirtualFile(uri)
-                    ?: run {
-                        log.warn("Implementation: Virtual file not found for $uri")
-                        return gson.toJsonTree(emptyList<Location>())
-                    }
-
-            val document =
-                documentManager.getIntellijDocument(uri)
-                    ?: run {
-                        log.warn("Implementation: Document not found for $uri")
-                        return gson.toJsonTree(emptyList<Location>())
-                    }
-
-            val psiFile =
-                ReadAction.compute<PsiFile?, RuntimeException> {
-                    PsiManager.getInstance(project).findFile(virtualFile)
+            // 使用统一的 URI 解析器：缓存文件映射回 jar PSI，但使用缓存文件文本算 offset
+            val resolved = LspDecompiledUriResolver.resolveForRequest(project, uri)
+                ?: run {
+                    LspLogger.warn(TAG, "URI 解析失败 for $uri")
+                    return gson.toJsonTree(emptyList<Location>())
                 }
-                    ?: run {
-                        log.warn("Implementation: PSI file not found")
-                        return gson.toJsonTree(emptyList<Location>())
-                    }
+
+            val psiFile = resolved.analysisPsiFile
+            val fileText = resolved.fileText
 
             val implementations =
                 ReadAction.compute<List<Location>, RuntimeException> {
-                    findImplementations(psiFile, document, position)
+                    findImplementations(psiFile, fileText, position)
                 }
 
-            log.info("Implementation: Found ${implementations.size} implementation(s)")
+            LspLogger.info(TAG, "Found ${implementations.size} implementation(s)")
 
             gson.toJsonTree(implementations)
         } catch (e: Exception) {
-            log.error("Error handling implementation request", e)
+            LspLogger.error(TAG, "Error handling request: ${e.message}")
             gson.toJsonTree(emptyList<Location>())
         }
     }
@@ -92,10 +83,10 @@ class ImplementationHandler(
     /** Find implementations of the element at the given position. */
     private fun findImplementations(
         psiFile: PsiFile,
-        document: com.intellij.openapi.editor.Document,
+        fileText: String,
         position: Position
     ): List<Location> {
-        val offset = PsiMapper.positionToOffset(document, position)
+        val offset = PsiMapper.positionToOffset(fileText, position)
         val element = psiFile.findElementAt(offset)?.parent ?: return emptyList()
 
         // Find the target element (class, interface, method)
@@ -112,7 +103,7 @@ class ImplementationHandler(
                 }
             }
         } catch (e: Exception) {
-            log.warn("Error searching for implementations: ${e.message}")
+            LspLogger.warn(TAG, "Error searching for implementations: ${e.message}")
         }
 
         return implementations

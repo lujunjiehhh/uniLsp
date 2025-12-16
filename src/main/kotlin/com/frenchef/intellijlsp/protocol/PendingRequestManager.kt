@@ -99,7 +99,7 @@ class PendingRequestManager {
             pending.future.completeExceptionally(error)
             return true
         }
-        log.warn("No pending request found for id=$id")
+        with(log) { warn("No pending request found for id=$id") }
         return false
     }
 

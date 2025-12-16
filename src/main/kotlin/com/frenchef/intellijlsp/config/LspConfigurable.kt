@@ -1,11 +1,14 @@
 package com.frenchef.intellijlsp.config
 
+import com.frenchef.intellijlsp.services.LspProjectService
+import com.frenchef.intellijlsp.util.LspLogger
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
-import com.frenchef.intellijlsp.services.LspProjectService
 import javax.swing.*
 
 /**
@@ -18,6 +21,8 @@ class LspConfigurable : Configurable {
     private var autoStartCheckBox: JCheckBox? = null
     private var hoverFormatHtmlButton: JBRadioButton? = null
     private var hoverFormatMarkdownButton: JBRadioButton? = null
+    private var logPathField: TextFieldWithBrowseButton? = null
+    private var currentLogFileLabel: JLabel? = null
     private var statusLabel: JLabel? = null
 
     override fun getDisplayName(): String {
@@ -28,8 +33,8 @@ class LspConfigurable : Configurable {
         val settings = LspSettings.getInstance()
 
         // Transport mode selection
-        tcpRadioButton = JBRadioButton("TCP Socket", settings.transportMode == TransportMode.TCP)
-        udsRadioButton = JBRadioButton("Unix Domain Socket", settings.transportMode == TransportMode.UDS)
+        tcpRadioButton = JBRadioButton("Tcp socket", settings.transportMode == TransportMode.TCP)
+        udsRadioButton = JBRadioButton("Unix domain socket", settings.transportMode == TransportMode.UDS)
         
         val transportGroup = ButtonGroup()
         transportGroup.add(tcpRadioButton)
@@ -74,6 +79,20 @@ class LspConfigurable : Configurable {
             add(hoverFormatMarkdownButton)
         }
 
+        // Log file path configuration
+        logPathField = TextFieldWithBrowseButton()
+        logPathField?.text = settings.logFilePath
+        logPathField?.addBrowseFolderListener(
+            "选择日志目录",
+            "选择 LSP 日志文件保存的目录",
+            null,
+            FileChooserDescriptorFactory.createSingleFolderDescriptor()
+        )
+
+        // Current log file display
+        val currentLogPath = LspLogger.getLogFilePath() ?: "尚未初始化"
+        currentLogFileLabel = JLabel("<html><font color='gray'>$currentLogPath</font></html>")
+
         // Status display
         statusLabel = JLabel(getServerStatusText())
 
@@ -87,6 +106,10 @@ class LspConfigurable : Configurable {
             .addSeparator()
             .addLabeledComponent("Hover formatting style:", hoverFormatPanel)
             .addSeparator()
+            .addLabeledComponent("日志目录:", logPathField!!)
+            .addTooltip("留空则使用默认目录: ~/.intellij-lsp-logs/")
+            .addLabeledComponent("当前日志文件:", currentLogFileLabel!!)
+            .addSeparator()
             .addLabeledComponent("Server Status:", statusLabel!!)
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -99,11 +122,13 @@ class LspConfigurable : Configurable {
         val portValue = portField?.text?.toIntOrNull() ?: settings.startingPort
         val autoStart = autoStartCheckBox?.isSelected ?: settings.autoStart
         val hoverFormat = getSelectedHoverFormat()
+        val logPath = logPathField?.text ?: settings.logFilePath
 
         return selectedMode != settings.transportMode ||
                 portValue != settings.startingPort ||
                 autoStart != settings.autoStart ||
-                hoverFormat != settings.hoverFormat
+                hoverFormat != settings.hoverFormat ||
+                logPath != settings.logFilePath
     }
 
     override fun apply() {
@@ -113,9 +138,14 @@ class LspConfigurable : Configurable {
         settings.startingPort = portField?.text?.toIntOrNull() ?: 2087
         settings.autoStart = autoStartCheckBox?.isSelected ?: true
         settings.hoverFormat = getSelectedHoverFormat()
+        settings.logFilePath = logPathField?.text ?: ""
 
         // Update status display
         statusLabel?.text = getServerStatusText()
+
+        // Update current log file label
+        val currentLogPath = LspLogger.getLogFilePath() ?: "尚未初始化"
+        currentLogFileLabel?.text = "<html><font color='gray'>$currentLogPath</font></html>"
     }
 
     override fun reset() {
@@ -128,7 +158,12 @@ class LspConfigurable : Configurable {
         autoStartCheckBox?.isSelected = settings.autoStart
         hoverFormatHtmlButton?.isSelected = settings.hoverFormat == LspSettings.HoverFormat.RAW_HTML
         hoverFormatMarkdownButton?.isSelected = settings.hoverFormat == LspSettings.HoverFormat.MARKDOWN
+        logPathField?.text = settings.logFilePath
         statusLabel?.text = getServerStatusText()
+
+        // Update current log file label
+        val currentLogPath = LspLogger.getLogFilePath() ?: "尚未初始化"
+        currentLogFileLabel?.text = "<html><font color='gray'>$currentLogPath</font></html>"
     }
 
     private fun getServerStatusText(): String {

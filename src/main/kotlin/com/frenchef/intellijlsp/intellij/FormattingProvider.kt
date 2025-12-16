@@ -32,10 +32,11 @@ class FormattingProvider(private val project: Project) {
      */
     fun formatDocument(psiFile: PsiFile, options: FormattingOptions): List<TextEdit> {
         return try {
-            val document =
-                PsiDocumentManager.getInstance(project).getDocument(psiFile)
-                    ?: return emptyList()
-            val originalText = document.text
+            val (document, originalText) = ReadAction.compute<Pair<com.intellij.openapi.editor.Document, String>?, RuntimeException> {
+                val doc = PsiDocumentManager.getInstance(project).getDocument(psiFile)
+                    ?: return@compute null
+                Pair(doc, doc.text)
+            } ?: return emptyList()
 
             // Create a copy for formatting
             val formattedText = formatText(psiFile, originalText, 0, originalText.length)
@@ -46,7 +47,9 @@ class FormattingProvider(private val project: Project) {
             }
 
             // Compute diff and return as single replace edit
-            computeTextEdits(originalText, formattedText, document)
+            ReadAction.compute<List<TextEdit>, RuntimeException> {
+                computeTextEdits(originalText, formattedText, document)
+            }
         } catch (e: Exception) {
             log.warn("Error formatting document", e)
             emptyList()
@@ -63,14 +66,14 @@ class FormattingProvider(private val project: Project) {
      */
     fun formatRange(psiFile: PsiFile, range: Range, options: FormattingOptions): List<TextEdit> {
         return try {
-            val document =
-                PsiDocumentManager.getInstance(project).getDocument(psiFile)
-                    ?: return emptyList()
+            val (document, originalText, startOffset, endOffset) = ReadAction.compute<FormatRangeContext?, RuntimeException> {
+                val doc = PsiDocumentManager.getInstance(project).getDocument(psiFile)
+                    ?: return@compute null
+                val start = PsiMapper.positionToOffset(doc, range.start)
+                val end = PsiMapper.positionToOffset(doc, range.end)
+                FormatRangeContext(doc, doc.text, start, end)
+            } ?: return emptyList()
 
-            val startOffset = PsiMapper.positionToOffset(document, range.start)
-            val endOffset = PsiMapper.positionToOffset(document, range.end)
-
-            val originalText = document.text
             val formattedText = formatText(psiFile, originalText, startOffset, endOffset)
 
             if (formattedText == originalText) {
@@ -78,12 +81,22 @@ class FormattingProvider(private val project: Project) {
                 return emptyList()
             }
 
-            computeTextEdits(originalText, formattedText, document)
+            ReadAction.compute<List<TextEdit>, RuntimeException> {
+                computeTextEdits(originalText, formattedText, document)
+            }
         } catch (e: Exception) {
             log.warn("Error formatting range", e)
             emptyList()
         }
     }
+
+    /** Helper data class for formatRange context. */
+    private data class FormatRangeContext(
+        val document: com.intellij.openapi.editor.Document,
+        val originalText: String,
+        val startOffset: Int,
+        val endOffset: Int
+    )
 
     /** Format text using IntelliJ's code style. */
     private fun formatText(

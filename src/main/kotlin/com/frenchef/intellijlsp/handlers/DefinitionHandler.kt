@@ -1,6 +1,7 @@
 package com.frenchef.intellijlsp.handlers
 
 import com.frenchef.intellijlsp.intellij.DocumentManager
+import com.frenchef.intellijlsp.intellij.LspDecompiledUriResolver
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
 import com.frenchef.intellijlsp.protocol.LspGson
@@ -10,7 +11,6 @@ import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
-import com.intellij.psi.PsiManager
 
 /**
  * Handles textDocument/definition requests.
@@ -42,15 +42,14 @@ class DefinitionHandler(
             val position = defParams.position
             
             log.debug("Definition requested for $uri at line ${position.line}, char ${position.character}")
-            
-            val virtualFile = documentManager.getVirtualFile(uri) ?: return null
-            val document = documentManager.getIntellijDocument(uri) ?: return null
-            
-            val psiFile = ReadAction.compute<com.intellij.psi.PsiFile?, RuntimeException> {
-                PsiManager.getInstance(project).findFile(virtualFile)
-            } ?: return null
-            
-            val element = PsiMapper.getPsiElementAtPosition(psiFile, document, position)
+
+            // 使用统一的 URI 解析器：缓存文件映射回 jar PSI，但使用缓存文件文本算 offset
+            val resolved = LspDecompiledUriResolver.resolveForRequest(project, uri) ?: return null
+
+            val psiFile = resolved.analysisPsiFile
+            val fileText = resolved.fileText
+
+            val element = PsiMapper.getPsiElementAtPosition(psiFile, fileText, position)
             
             if (element == null) {
                 log.debug("No PSI element found at position")
@@ -112,7 +111,7 @@ class DefinitionHandler(
                             for (target in targets) {
                                 // Skip if target is the same element
                                 if (target != element && target != element.parent) {
-                                    val location = PsiMapper.psiElementToLocation(target)
+                                    val location = PsiMapper.psiElementToLocation(target, project)
                                     if (location != null) {
                                         log.info("  Target: ${target.javaClass.simpleName}, file=${target.containingFile?.virtualFile?.path}")
                                         locations.add(location)
@@ -132,7 +131,7 @@ class DefinitionHandler(
                     for (ref in references) {
                         val resolved = ref.resolve()
                         if (resolved != null && resolved != element && resolved != element.parent) {
-                            val location = PsiMapper.psiElementToLocation(resolved)
+                            val location = PsiMapper.psiElementToLocation(resolved, project)
                             if (location != null) {
                                 log.info("Resolved via references: ${resolved.javaClass.simpleName}")
                                 locations.add(location)
@@ -150,7 +149,7 @@ class DefinitionHandler(
                         for (ref in refs) {
                             val resolved = ref.resolve()
                             if (resolved != null && resolved != current) {
-                                val location = PsiMapper.psiElementToLocation(resolved)
+                                val location = PsiMapper.psiElementToLocation(resolved, project)
                                 if (location != null) {
                                     log.info("Resolved via parent: ${resolved.javaClass.simpleName}")
                                     locations.add(location)

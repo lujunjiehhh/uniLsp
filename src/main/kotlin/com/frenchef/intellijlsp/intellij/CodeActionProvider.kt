@@ -5,6 +5,8 @@ import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx
 import com.intellij.codeInsight.daemon.impl.HighlightInfo
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.codeInsight.intention.IntentionManager
+import com.intellij.codeInspection.LocalQuickFix
+import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -18,14 +20,16 @@ import com.intellij.psi.PsiFile
 /**
  * 符合 LSP 3.17 规范的 CodeAction 提供者
  *
- * 使用两种方式收集 CodeAction：
- * 1. DaemonCodeAnalyzer 的 HighlightInfo 中包含的 QuickFix（用于诊断相关的修复）
- * 2. IntentionManager 的 intentions（通过 isAvailable 检查可用性）
+ * 使用三种方式收集 CodeAction：
+ * 1. DaemonCodeAnalyzer 的 HighlightInfo 中包含的 QuickFix（用于诊断相关的修复，需要文件打开）
+ * 2. InspectionDiagnosticsProvider 的 ProblemDescriptor（不需要文件打开）
+ * 3. IntentionManager 的 intentions（通过 isAvailable 检查可用性）
  *
  * 返回的 CodeAction 包含 data 字段，用于 codeAction/resolve 时恢复上下文
  */
 class CodeActionProvider(private val project: Project) {
     private val log = logger<CodeActionProvider>()
+    private val inspectionProvider = InspectionDiagnosticsProvider(project)
 
     private companion object {
         const val MAX_ACTIONS = 50
@@ -54,7 +58,7 @@ class CodeActionProvider(private val project: Project) {
             val actions = mutableListOf<CodeAction>()
             val seenTitles = mutableSetOf<String>()
 
-            // 2. 收集来自 HighlightInfo 的 QuickFix (ReadAction)
+            // 2. 收集来自 HighlightInfo 的 QuickFix (ReadAction) - 需要文件打开
             ReadAction.run<RuntimeException> {
                 collectQuickFixesFromHighlights(
                     psiFile,
@@ -67,7 +71,22 @@ class CodeActionProvider(private val project: Project) {
                 )
             }
 
-            // 3. 收集来自 IntentionManager 的 intentions (EDT handled internally)
+            // 3. 如果 HighlightInfo 没有提供足够的 QuickFix，尝试从 Inspection API 获取
+            if (actions.size < 5) {
+                ReadAction.run<RuntimeException> {
+                    collectQuickFixesFromInspections(
+                        psiFile,
+                        document,
+                        startOffset,
+                        endOffset,
+                        uri,
+                        actions,
+                        seenTitles
+                    )
+                }
+            }
+
+            // 4. 收集来自 IntentionManager 的 intentions (EDT handled internally)
             // 创建 Editor 和检查 intention 可用性需要 EDT
             collectAvailableIntentions(psiFile, document, startOffset, uri, actions, seenTitles)
 
@@ -153,6 +172,67 @@ class CodeActionProvider(private val project: Project) {
             }
         } catch (e: Exception) {
             log.trace("Error extracting quick fix: ${e.message}")
+        }
+    }
+
+    /** 从 InspectionDiagnosticsProvider 收集 QuickFix（不需要文件打开） */
+    private fun collectQuickFixesFromInspections(
+        psiFile: PsiFile,
+        document: Document,
+        startOffset: Int,
+        endOffset: Int,
+        uri: String,
+        actions: MutableList<CodeAction>,
+        seenTitles: MutableSet<String>
+    ) {
+        try {
+            val diagnosticsWithDescriptors = inspectionProvider.getDiagnosticsWithDescriptors(psiFile, document)
+
+            for (item in diagnosticsWithDescriptors) {
+                if (actions.size >= MAX_ACTIONS) break
+
+                val diagStartOffset = PsiMapper.positionToOffset(document, item.diagnostic.range.start)
+                val diagEndOffset = PsiMapper.positionToOffset(document, item.diagnostic.range.end)
+
+                // 检查诊断是否在请求的范围内
+                if (diagEndOffset < startOffset || diagStartOffset > endOffset) continue
+
+                val fixes = item.descriptor.fixes?.filterIsInstance<LocalQuickFix>() ?: continue
+
+                for (fix in fixes) {
+                    if (actions.size >= MAX_ACTIONS) break
+
+                    val title = fix.name
+                    if (title.isNotBlank() && title !in seenTitles) {
+                        seenTitles.add(title)
+
+                        val isError = item.descriptor.highlightType == ProblemHighlightType.ERROR ||
+                                item.descriptor.highlightType == ProblemHighlightType.GENERIC_ERROR
+
+                        actions.add(
+                            CodeAction(
+                                title = title,
+                                kind = CodeActionKinds.QUICK_FIX,
+                                diagnostics = null,
+                                isPreferred = isError,
+                                edit = null,
+                                command = null,
+                                data = CodeActionData(
+                                    uri = uri,
+                                    offset = diagStartOffset,
+                                    actionTitle = title,
+                                    actionType = "inspection_quickfix"
+                                )
+                            )
+                        )
+                        log.debug("Collected inspection QuickFix: $title")
+                    }
+                }
+            }
+
+            log.debug("Collected ${actions.size} quick fixes from inspections")
+        } catch (e: Exception) {
+            log.debug("Error collecting quick fixes from inspections: ${e.message}")
         }
     }
 

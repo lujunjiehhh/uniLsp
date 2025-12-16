@@ -34,6 +34,11 @@ class LspSettings : PersistentStateComponent<LspSettings> {
      */
     var hoverFormat: HoverFormat = HoverFormat.MARKDOWN
 
+    /**
+     * Custom log file path. Empty means use default (~/.intellij-lsp-logs/).
+     */
+    var logFilePath: String = ""
+
     override fun getState(): LspSettings {
         return this
     }

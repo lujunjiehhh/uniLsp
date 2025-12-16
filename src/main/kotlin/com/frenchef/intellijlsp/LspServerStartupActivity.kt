@@ -5,6 +5,7 @@ import com.frenchef.intellijlsp.handlers.LifecycleHandler
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
 import com.frenchef.intellijlsp.server.LspServerManager
 import com.frenchef.intellijlsp.services.LspProjectService
+import com.frenchef.intellijlsp.util.LspLogger
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
@@ -22,6 +23,10 @@ class LspServerStartupActivity : ProjectActivity {
         }
 
         log.info("Starting LSP server for project: ${project.name}")
+
+        // Initialize LSP Logger for debugging
+        LspLogger.init(project)
+        LspLogger.info("Startup", "Starting LSP server for project: ${project.name}")
 
         try {
             // Create JSON-RPC handler for this project
@@ -108,7 +113,7 @@ class LspServerStartupActivity : ProjectActivity {
             val projectService = project.getService(LspProjectService::class.java)
             projectService.setServer(server)
 
-            // Create and start diagnostics handler
+            // Create and start diagnostics handler (Push 模式)
             val diagnosticsProvider =
                 com.frenchef.intellijlsp.intellij.DiagnosticsProvider(project)
             val diagnosticsHandler =
@@ -122,6 +127,15 @@ class LspServerStartupActivity : ProjectActivity {
 
             // Store diagnostics handler in project service for access by other handlers
             projectService.setDiagnosticsHandler(diagnosticsHandler)
+
+            // Register documentDiagnostic handler (Pull 模式 - LSP 3.17)
+            val documentDiagnosticHandler =
+                com.frenchef.intellijlsp.handlers.DocumentDiagnosticHandler(
+                    project,
+                    jsonRpcHandler,
+                    documentManager
+                )
+            documentDiagnosticHandler.register()
 
             // Register typeDefinition handler (abcoder 兼容)
             val typeDefinitionHandler =

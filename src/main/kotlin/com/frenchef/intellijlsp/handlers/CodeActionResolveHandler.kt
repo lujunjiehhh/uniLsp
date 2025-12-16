@@ -1,6 +1,8 @@
 package com.frenchef.intellijlsp.handlers
 
 import com.frenchef.intellijlsp.intellij.DocumentManager
+import com.frenchef.intellijlsp.intellij.InspectionDiagnosticsProvider
+import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
 import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.*
@@ -9,6 +11,8 @@ import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx
 import com.intellij.codeInsight.daemon.impl.HighlightInfo
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.codeInsight.intention.IntentionManager
+import com.intellij.codeInspection.LocalQuickFix
+import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.diagnostic.logger
@@ -25,7 +29,7 @@ import com.intellij.psi.PsiManager
  *
  * 用于惰性解析 CodeAction 的 edit 属性：
  * 1. 从 data 字段恢复上下文（uri, offset, actionTitle）
- * 2. 找到对应的 IntentionAction/QuickFix
+ * 2. 找到对应的 IntentionAction/QuickFix/LocalQuickFix
  * 3. 在 PSI 文件副本上应用
  * 4. 计算差异生成 WorkspaceEdit
  */
@@ -36,6 +40,7 @@ class CodeActionResolveHandler(
 ) {
     private val log = logger<CodeActionResolveHandler>()
     private val gson = LspGson.instance
+    private val inspectionProvider = InspectionDiagnosticsProvider(project)
 
     /** 注册 codeAction/resolve handler */
     fun register() {
@@ -102,6 +107,7 @@ class CodeActionResolveHandler(
             when (data.actionType) {
                 "quickfix" -> resolveQuickFix(psiFile, document, data)
                 "intention" -> resolveIntention(psiFile, document, data)
+                "inspection_quickfix" -> resolveInspectionQuickFix(psiFile, document, data)
                 else -> {
                     log.warn("Unknown action type: ${data.actionType}")
                     null
@@ -225,6 +231,108 @@ class CodeActionResolveHandler(
         }
     }
 
+    /** 解析 InspectionQuickFix 类型的 CodeAction */
+    private fun resolveInspectionQuickFix(
+        psiFile: PsiFile,
+        document: Document,
+        data: CodeActionData
+    ): WorkspaceEdit? {
+        try {
+            var result: WorkspaceEdit? = null
+
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait {
+                // 获取诊断信息
+                val diagnosticsWithDescriptors = inspectionProvider.getDiagnosticsWithDescriptors(psiFile, document)
+
+                // 查找匹配的 QuickFix
+                var foundDescriptor: ProblemDescriptor? = null
+                var foundFix: LocalQuickFix? = null
+
+                for (item in diagnosticsWithDescriptors) {
+                    val diagStartOffset = PsiMapper.positionToOffset(document, item.diagnostic.range.start)
+                    val diagEndOffset = PsiMapper.positionToOffset(document, item.diagnostic.range.end)
+
+                    // 检查 offset 是否匹配
+                    if (data.offset !in diagStartOffset..diagEndOffset) continue
+
+                    val fixes = item.descriptor.fixes?.filterIsInstance<LocalQuickFix>() ?: continue
+
+                    for (fix in fixes) {
+                        if (fix.name == data.actionTitle) {
+                            foundDescriptor = item.descriptor
+                            foundFix = fix
+                            break
+                        }
+                    }
+
+                    if (foundFix != null) break
+                }
+
+                if (foundDescriptor != null && foundFix != null) {
+                    result = applyLocalQuickFixAndGetEdit(psiFile, document, foundFix, foundDescriptor, data)
+                } else {
+                    log.warn("InspectionQuickFix not found: ${data.actionTitle}")
+                }
+            }
+
+            return result
+        } catch (e: com.intellij.openapi.progress.ProcessCanceledException) {
+            throw e
+        } catch (e: Exception) {
+            log.error("Error resolving inspection quickfix", e)
+            return null
+        }
+    }
+
+    /**
+     * 应用 LocalQuickFix 并获取 edit
+     */
+    private fun applyLocalQuickFixAndGetEdit(
+        psiFile: PsiFile,
+        document: Document,
+        fix: LocalQuickFix,
+        descriptor: ProblemDescriptor,
+        data: CodeActionData
+    ): WorkspaceEdit? {
+        val originalText = document.text
+
+        try {
+            var modifiedText: String? = null
+
+            WriteCommandAction.runWriteCommandAction(project) {
+                try {
+                    PsiDocumentManager.getInstance(project).commitDocument(document)
+
+                    fix.applyFix(project, descriptor)
+                    PsiDocumentManager.getInstance(project).commitDocument(document)
+
+                    modifiedText = document.text
+                } catch (e: Exception) {
+                    log.warn("Failed to apply LocalQuickFix: ${e.message}", e)
+                } finally {
+                    try {
+                        PsiDocumentManager.getInstance(project).doPostponedOperationsAndUnblockDocument(document)
+                        document.setText(originalText)
+                        PsiDocumentManager.getInstance(project).commitDocument(document)
+                    } catch (e: Exception) {
+                        log.warn("Failed to rollback document text: ${e.message}", e)
+                    }
+                }
+            }
+
+            val after = modifiedText ?: return null
+            if (after == originalText) return null
+
+            val textEdits = computeFullDocumentReplaceEdit(originalText, after)
+            if (textEdits.isEmpty()) return null
+
+            return WorkspaceEdit(changes = mapOf(data.uri to textEdits))
+        } catch (e: Exception) {
+            log.error("Error applying LocalQuickFix and getting edit", e)
+            return null
+        }
+    }
+
     /**
      * 在原文件上临时应用 action 并计算 edit，然后立刻回滚文本。
      *
@@ -261,6 +369,9 @@ class CodeActionResolveHandler(
                     log.warn("Failed to invoke action: ${e.message}", e)
                 } finally {
                     try {
+                        // 解锁文档（处理 PSI pending 操作）
+                        PsiDocumentManager.getInstance(project)
+                            .doPostponedOperationsAndUnblockDocument(originalDocument)
                         // 回滚：避免真实文件被改动（LSP resolve 只需要 edit）
                         originalDocument.setText(originalText)
                         PsiDocumentManager.getInstance(project).commitDocument(originalDocument)

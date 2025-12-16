@@ -1,6 +1,7 @@
 package com.frenchef.intellijlsp.handlers
 
 import com.frenchef.intellijlsp.intellij.DocumentManager
+import com.frenchef.intellijlsp.intellij.LspDecompiledUriResolver
 import com.frenchef.intellijlsp.intellij.PsiMapper
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
 import com.frenchef.intellijlsp.protocol.LspGson
@@ -10,7 +11,6 @@ import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
-import com.intellij.psi.PsiManager
 import com.intellij.psi.search.searches.ReferencesSearch
 
 /**
@@ -44,15 +44,14 @@ class ReferencesHandler(
             val includeDeclaration = refParams.context.includeDeclaration
             
             log.debug("References requested for $uri at line ${position.line}, char ${position.character}")
-            
-            val virtualFile = documentManager.getVirtualFile(uri) ?: return null
-            val document = documentManager.getIntellijDocument(uri) ?: return null
-            
-            val psiFile = ReadAction.compute<com.intellij.psi.PsiFile?, RuntimeException> {
-                PsiManager.getInstance(project).findFile(virtualFile)
-            } ?: return null
-            
-            val element = PsiMapper.getPsiElementAtPosition(psiFile, document, position)
+
+            // 使用统一的 URI 解析器：缓存文件映射回 jar PSI，但使用缓存文件文本算 offset
+            val resolved = LspDecompiledUriResolver.resolveForRequest(project, uri) ?: return null
+
+            val psiFile = resolved.analysisPsiFile
+            val fileText = resolved.fileText
+
+            val element = PsiMapper.getPsiElementAtPosition(psiFile, fileText, position)
             
             if (element == null) {
                 log.debug("No PSI element found at position")
@@ -94,7 +93,7 @@ class ReferencesHandler(
 
                 // 包含声明位置
                 if (includeDeclaration) {
-                    val declLocation = PsiMapper.psiElementToLocation(targetElement)
+                    val declLocation = PsiMapper.psiElementToLocation(targetElement, project)
                     if (declLocation != null) {
                         locations.add(declLocation)
                         log.info("Added declaration location")
@@ -110,7 +109,7 @@ class ReferencesHandler(
 
                 for (reference in allRefs.take(100)) { // Limit to 100 references
                     val refElement = reference.element
-                    val location = PsiMapper.psiElementToLocation(refElement)
+                    val location = PsiMapper.psiElementToLocation(refElement, project)
                     
                     if (location != null) {
                         locations.add(location)

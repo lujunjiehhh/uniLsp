@@ -24,6 +24,8 @@ class DiagnosticsProvider(private val project: Project) {
         return ReadAction.compute<List<Diagnostic>, RuntimeException> {
             try {
                 val diagnostics = mutableListOf<Diagnostic>()
+                // Track seen diagnostics to avoid duplicates (key: startLine:startChar:endLine:endChar:message:severity)
+                val seen = mutableSetOf<String>()
                 
                 // Get highlighting information from the document's markup model
                 val markupModel = com.intellij.openapi.editor.impl.DocumentMarkupModel.forDocument(
@@ -43,7 +45,13 @@ class DiagnosticsProvider(private val project: Project) {
                         if (errorStripeTooltip is HighlightInfo) {
                             val diagnostic = highlightInfoToDiagnostic(errorStripeTooltip, document)
                             if (diagnostic != null) {
-                                diagnostics.add(diagnostic)
+                                // Create deduplication key
+                                val key = "${diagnostic.range.start.line}:${diagnostic.range.start.character}:" +
+                                        "${diagnostic.range.end.line}:${diagnostic.range.end.character}:" +
+                                        "${diagnostic.message}:${diagnostic.severity?.value}"
+                                if (seen.add(key)) {
+                                    diagnostics.add(diagnostic)
+                                }
                             }
                         }
                     }
@@ -63,6 +71,9 @@ class DiagnosticsProvider(private val project: Project) {
     fun getDiagnosticsByUri(uri: String, virtualFile: VirtualFile, document: Document): List<Diagnostic> {
         return ReadAction.compute<List<Diagnostic>, RuntimeException> {
             try {
+                if (!virtualFile.isValid) {
+                    return@compute emptyList()
+                }
                 val psiFile = com.intellij.psi.PsiManager.getInstance(project).findFile(virtualFile)
                 if (psiFile != null) {
                     getDiagnostics(psiFile, document)
@@ -81,13 +92,10 @@ class DiagnosticsProvider(private val project: Project) {
      */
     private fun highlightInfoToDiagnostic(info: HighlightInfo, document: Document): Diagnostic? {
         try {
-            val severity = highlightSeverityToDiagnosticSeverity(info.severity)
+            val severity = highlightSeverityToDiagnosticSeverity(info.severity) ?: return null
             
             // Only include errors, warnings, and weak warnings
-            if (severity == null) {
-                return null
-            }
-            
+
             val startOffset = info.startOffset
             val endOffset = info.endOffset
             
