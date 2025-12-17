@@ -3,6 +3,7 @@ package com.frenchef.intellijlsp.handlers
 import com.frenchef.intellijlsp.intellij.DocumentManager
 import com.frenchef.intellijlsp.intellij.LspDecompiledUriResolver
 import com.frenchef.intellijlsp.intellij.PsiMapper
+import com.frenchef.intellijlsp.language.LanguageHandlerRegistry
 import com.frenchef.intellijlsp.protocol.JsonRpcHandler
 import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.Location
@@ -13,17 +14,21 @@ import com.frenchef.intellijlsp.util.LspLogger
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
-import com.intellij.psi.*
+import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiFile
 import com.intellij.psi.search.searches.DefinitionsScopedSearch
-import org.jetbrains.uast.UClass
-import org.jetbrains.uast.UMethod
-import org.jetbrains.uast.toUElement
 
-/** Handles textDocument/implementation requests. Provides "Go to Implementation" functionality. */
+/**
+ * Handles textDocument/implementation requests.
+ * Provides "Go to Implementation" functionality.
+ * 使用 LanguageHandler 抽象层支持多语言。
+ */
+@Suppress("unused")
 class ImplementationHandler(
     private val project: Project,
     private val jsonRpcHandler: JsonRpcHandler,
-    private val documentManager: DocumentManager
+    private val documentManager: DocumentManager // 保留参数以保持 API 一致性
 ) {
     companion object {
         private const val TAG = "Implementation"
@@ -56,7 +61,7 @@ class ImplementationHandler(
                 "requested for $uri at line ${position.line}, char ${position.character}"
             )
 
-            // 使用统一的 URI 解析器：缓存文件映射回 jar PSI，但使用缓存文件文本算 offset
+            // 使用统一的 URI 解析器
             val resolved = LspDecompiledUriResolver.resolveForRequest(project, uri)
                 ?: run {
                     LspLogger.warn(TAG, "URI 解析失败 for $uri")
@@ -89,13 +94,13 @@ class ImplementationHandler(
         val offset = PsiMapper.positionToOffset(fileText, position)
         val element = psiFile.findElementAt(offset)?.parent ?: return emptyList()
 
-        // Find the target element (class, interface, method)
-        val target = findTargetElement(element) ?: return emptyList()
+        // 使用 LanguageHandler 查找目标元素
+        val target = findTargetElement(psiFile, element) ?: return emptyList()
 
         val implementations = mutableListOf<Location>()
 
         try {
-            // Use DefinitionsScopedSearch to find implementations
+            // Use DefinitionsScopedSearch to find implementations (通用 PSI API)
             DefinitionsScopedSearch.search(target).forEach { impl ->
                 val location = elementToLocation(impl)
                 if (location != null) {
@@ -109,24 +114,31 @@ class ImplementationHandler(
         return implementations
     }
 
-    /** Find the target element for implementation search - using UAST for Java/Kotlin support */
-    private fun findTargetElement(element: PsiElement): PsiElement? {
-        var current: PsiElement? = element
-        while (current != null) {
-            val uElement = current.toUElement()
-            // 检查是否是类/接口
-            if (uElement is UClass) {
-                return uElement.javaPsi
-            }
-            // 检查是否是方法
-            if (uElement is UMethod) {
-                return uElement.javaPsi
-            }
-            // 回退检查 Java PSI
-            if (current is PsiClass) return current
-            if (current is PsiMethod) return current
-            current = current.parent
+    /**
+     * Find the target element for implementation search.
+     * 使用 LanguageHandler 替代直接 UAST 调用。
+     */
+    private fun findTargetElement(psiFile: PsiFile, element: PsiElement): PsiElement? {
+        val handler = LanguageHandlerRegistry.getHandler(psiFile)
+
+        // 尝试查找方法
+        val functionInfo = handler.findContainingFunction(element)
+        if (functionInfo != null) {
+            return functionInfo.psiElement
         }
+
+        // 尝试查找类
+        val classInfo = handler.findContainingClass(element)
+        if (classInfo != null) {
+            return classInfo.psiElement
+        }
+
+        // 回退：尝试解析引用
+        val resolved = handler.resolveReference(element)
+        if (resolved != null) {
+            return resolved
+        }
+
         return null
     }
 
@@ -147,11 +159,10 @@ class ImplementationHandler(
 
         return Location(
             uri = file.url.replace("file://", "file:///"),
-            range =
-                Range(
-                    start = Position(line = startLine, character = startChar),
-                    end = Position(line = endLine, character = endChar)
-                )
+            range = Range(
+                start = Position(line = startLine, character = startChar),
+                end = Position(line = endLine, character = endChar)
+            )
         )
     }
 }

@@ -9,14 +9,12 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiShortNamesCache
-import org.jetbrains.uast.UClass
-import org.jetbrains.uast.UMethod
-import org.jetbrains.uast.toUElement
 
 /**
- * 使用 UAST 实现的工作区符号搜索
- * 
- * 提供跨 Java/Kotlin 的统一符号搜索功能
+ * 工作区符号搜索 Provider
+ *
+ * 使用 LanguageHandler 抽象层支持多语言符号索引。
+ * 对于 JVM 语言提供完整功能，其他语言降级处理。
  */
 class WorkspaceSymbolProvider(private val project: Project) {
     private val log = logger<WorkspaceSymbolProvider>()
@@ -39,7 +37,7 @@ class WorkspaceSymbolProvider(private val project: Project) {
                 val results = mutableListOf<SymbolInformation>()
                 val scope = GlobalSearchScope.projectScope(project)
 
-                // 使用 PsiShortNamesCache 搜索类（Java plugin 提供）
+                // 使用 PsiShortNamesCache 搜索类（Java plugin 提供，通用 PSI API）
                 searchClasses(query, scope, results)
 
                 // 使用 PsiShortNamesCache 搜索方法
@@ -55,7 +53,7 @@ class WorkspaceSymbolProvider(private val project: Project) {
     }
 
     /**
-     * 搜索类 (使用 UAST 统一处理)
+     * 搜索类（基于通用 PSI API）
      */
     private fun searchClasses(
         query: String,
@@ -73,13 +71,9 @@ class WorkspaceSymbolProvider(private val project: Project) {
                 val classes = cache.getClassesByName(name, scope)
                 for (psiClass in classes) {
                     if (results.size >= MAX_RESULTS) break
-                    // 使用 UAST 统一转换
-                    val uClass = psiClass.toUElement() as? UClass
-                    if (uClass != null) {
-                        val symbol = uClassToSymbol(uClass, psiClass)
-                        if (symbol != null) {
-                            results.add(symbol)
-                        }
+                    val symbol = psiClassToSymbol(psiClass)
+                    if (symbol != null) {
+                        results.add(symbol)
                     }
                 }
             }
@@ -89,7 +83,7 @@ class WorkspaceSymbolProvider(private val project: Project) {
     }
 
     /**
-     * 搜索方法 (使用 UAST 统一处理)
+     * 搜索方法（基于通用 PSI API）
      */
     private fun searchMethods(
         query: String,
@@ -107,13 +101,9 @@ class WorkspaceSymbolProvider(private val project: Project) {
                 val methods = cache.getMethodsByName(name, scope)
                 for (method in methods) {
                     if (results.size >= MAX_RESULTS) break
-                    // 使用 UAST 统一转换
-                    val uMethod = method.toUElement() as? UMethod
-                    if (uMethod != null) {
-                        val symbol = uMethodToSymbol(uMethod, method)
-                        if (symbol != null) {
-                            results.add(symbol)
-                        }
+                    val symbol = psiMethodToSymbol(method)
+                    if (symbol != null) {
+                        results.add(symbol)
                     }
                 }
             }
@@ -123,13 +113,13 @@ class WorkspaceSymbolProvider(private val project: Project) {
     }
 
     /**
-     * 将 UClass 转换为 SymbolInformation
+     * 将 PsiClass 转换为 SymbolInformation（使用通用 PSI API）
      */
-    private fun uClassToSymbol(uClass: UClass, psiClass: PsiClass): SymbolInformation? {
+    private fun psiClassToSymbol(psiClass: PsiClass): SymbolInformation? {
         val file = psiClass.containingFile?.virtualFile ?: return null
         val document = PsiDocumentManager.getInstance(project).getDocument(psiClass.containingFile) ?: return null
 
-        val name = uClass.name ?: return null
+        val name = psiClass.name ?: return null
         val kind = when {
             psiClass.isInterface -> SymbolKind.INTERFACE
             psiClass.isEnum -> SymbolKind.ENUM
@@ -157,14 +147,14 @@ class WorkspaceSymbolProvider(private val project: Project) {
     }
 
     /**
-     * 将 UMethod 转换为 SymbolInformation
+     * 将 PsiMethod 转换为 SymbolInformation（使用通用 PSI API）
      */
-    private fun uMethodToSymbol(uMethod: UMethod, psiMethod: PsiMethod): SymbolInformation? {
+    private fun psiMethodToSymbol(psiMethod: PsiMethod): SymbolInformation? {
         val file = psiMethod.containingFile?.virtualFile ?: return null
         val document = PsiDocumentManager.getInstance(project).getDocument(psiMethod.containingFile) ?: return null
 
-        val name = uMethod.name
-        val kind = if (uMethod.isConstructor) SymbolKind.CONSTRUCTOR else SymbolKind.METHOD
+        val name = psiMethod.name
+        val kind = if (psiMethod.isConstructor) SymbolKind.CONSTRUCTOR else SymbolKind.METHOD
 
         val startOffset = psiMethod.textRange?.startOffset ?: return null
         val startLine = document.getLineNumber(startOffset)

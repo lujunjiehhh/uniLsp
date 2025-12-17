@@ -17,12 +17,15 @@ repositories {
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
 dependencies {
     intellijPlatform {
-        create("IC", "2025.1.4.1")
+        create("IU", "2025.1.4.1")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
         // Add plugin dependencies for Kotlin and Java PSI support
         bundledPlugin("com.intellij.java")
         bundledPlugin("org.jetbrains.kotlin")
+        bundledPlugin("JavaScript")
+        plugin("org.jetbrains.plugins.go:241.14494.240") // Go plugin for 2024.1 (adjust version if needed for 2025.1 build)
+        plugin("org.rust.lang:0.4.239.6355-241") // Rust plugin for 2024.1
     }
 
     // Kotlin Coroutines for async I/O

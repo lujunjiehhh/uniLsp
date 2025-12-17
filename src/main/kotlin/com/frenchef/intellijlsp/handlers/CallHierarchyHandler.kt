@@ -7,6 +7,7 @@ import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.CallHierarchyIncomingCallsParams
 import com.frenchef.intellijlsp.protocol.models.CallHierarchyOutgoingCallsParams
 import com.frenchef.intellijlsp.protocol.models.CallHierarchyPrepareParams
+import com.frenchef.intellijlsp.util.LspLogger
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -50,6 +51,7 @@ class CallHierarchyHandler(
     /** 处理 textDocument/prepareCallHierarchy 请求 */
     private fun handlePrepare(params: JsonElement?): JsonElement? {
         if (params == null || params.isJsonNull) {
+            LspLogger.warn("CallHierarchy", "handlePrepare: params is null")
             return null
         }
 
@@ -58,23 +60,33 @@ class CallHierarchyHandler(
             val uri = prepareParams.textDocument.uri
             val position = prepareParams.position
 
-            log.debug("prepareCallHierarchy requested for $uri at line ${position.line}")
+            LspLogger.info("CallHierarchy", "prepareCallHierarchy requested for $uri at line ${position.line}")
 
-            val virtualFile = documentManager.getVirtualFile(uri) ?: return null
+            val virtualFile = documentManager.getVirtualFile(uri)
+            if (virtualFile == null) {
+                LspLogger.warn("CallHierarchy", "handlePrepare: virtualFile is null for $uri")
+                return null
+            }
+
             val psiFile =
                 ReadAction.compute<com.intellij.psi.PsiFile?, RuntimeException> {
                     PsiManager.getInstance(project).findFile(virtualFile)
                 }
-                    ?: return null
-
-            val result = provider.prepareCallHierarchy(psiFile, position)
-            if (result.isNullOrEmpty()) {
-                log.debug("prepareCallHierarchy: no method found")
+            if (psiFile == null) {
+                LspLogger.warn("CallHierarchy", "handlePrepare: psiFile is null for $uri")
                 return null
             }
 
+            val result = provider.prepareCallHierarchy(psiFile, position)
+            if (result.isNullOrEmpty()) {
+                LspLogger.info("CallHierarchy", "prepareCallHierarchy: no method found")
+                return null
+            }
+
+            LspLogger.info("CallHierarchy", "prepareCallHierarchy: found ${result.size} method(s)")
             return gson.toJsonTree(result)
         } catch (e: Exception) {
+            LspLogger.error("CallHierarchy", "Error handling prepareCallHierarchy: ${e.message}")
             log.error("Error handling prepareCallHierarchy", e)
             return null
         }

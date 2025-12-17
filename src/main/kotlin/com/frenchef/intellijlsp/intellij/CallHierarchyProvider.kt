@@ -1,26 +1,30 @@
 package com.frenchef.intellijlsp.intellij
 
+import com.frenchef.intellijlsp.language.FunctionInfo
+import com.frenchef.intellijlsp.language.LanguageHandlerRegistry
 import com.frenchef.intellijlsp.protocol.models.*
+import com.frenchef.intellijlsp.util.LspLogger
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
-import com.intellij.psi.*
+import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiManager
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
-import org.jetbrains.uast.UCallExpression
-import org.jetbrains.uast.UMethod
-import org.jetbrains.uast.toUElement
-import org.jetbrains.uast.toUElementOfType
 
 /**
  * Phase 10: Call Hierarchy Provider (T015)
  *
- * 提供 LSP Call Hierarchy 功能的 IntelliJ 集成实现。 使用 ReferencesSearch 查找调用者，遍历方法体查找被调用者。
+ * 提供 LSP Call Hierarchy 功能的 IntelliJ 集成实现。
+ * 使用 LanguageHandler 抽象层支持多语言。
  */
 class CallHierarchyProvider(private val project: Project) {
     private val log = logger<CallHierarchyProvider>()
 
     private companion object {
+        const val TAG = "CallHierarchy"
         const val MAX_RESULTS = 100
     }
 
@@ -28,71 +32,95 @@ class CallHierarchyProvider(private val project: Project) {
     fun prepareCallHierarchy(file: PsiFile, position: Position): List<CallHierarchyItem>? =
         ReadAction.compute<List<CallHierarchyItem>?, RuntimeException> {
             try {
-                val document =
-                    PsiDocumentManager.getInstance(project).getDocument(file)
-                        ?: return@compute null
-                val offset =
-                    document.getLineStartOffset(position.line) +
-                            position.character
+                LspLogger.debug(
+                    TAG,
+                    "prepareCallHierarchy: file=${file.name}, line=${position.line}, char=${position.character}"
+                )
 
-                // 查找位置处的元素
-                val element = file.findElementAt(offset) ?: return@compute null
-                val method = findMethod(element) ?: return@compute null
+                val document = PsiDocumentManager.getInstance(project).getDocument(file)
+                if (document == null) {
+                    LspLogger.warn(TAG, "prepareCallHierarchy: document is null for ${file.name}")
+                    return@compute null
+                }
 
-                val item = methodToItem(method, document) ?: return@compute null
-                log.debug("prepareCallHierarchy: found method '${item.name}'")
+                val offset = document.getLineStartOffset(position.line) + position.character
+                LspLogger.debug(TAG, "prepareCallHierarchy: offset=$offset, docLength=${document.textLength}")
+
+                val element = file.findElementAt(offset)
+                if (element == null) {
+                    LspLogger.warn(TAG, "prepareCallHierarchy: element is null at offset $offset")
+                    return@compute null
+                }
+                LspLogger.debug(
+                    TAG,
+                    "prepareCallHierarchy: element=${element.javaClass.simpleName}, text='${element.text.take(30)}'"
+                )
+
+                // 使用 LanguageHandler 查找方法
+                val handler = LanguageHandlerRegistry.getHandler(file)
+                val functionInfo = handler.findContainingFunction(element)
+                if (functionInfo == null) {
+                    LspLogger.warn(
+                        TAG,
+                        "prepareCallHierarchy: function not found for element ${element.javaClass.simpleName}"
+                    )
+                    return@compute null
+                }
+                LspLogger.debug(
+                    TAG,
+                    "prepareCallHierarchy: function=${functionInfo.name}, class=${functionInfo.containingClass?.name}"
+                )
+
+                val item = functionInfoToItem(functionInfo, document)
+                if (item == null) {
+                    LspLogger.warn(TAG, "prepareCallHierarchy: functionInfoToItem returned null")
+                    return@compute null
+                }
+                LspLogger.info(TAG, "prepareCallHierarchy: found function '${item.name}'")
                 listOf(item)
             } catch (e: Exception) {
+                LspLogger.error(TAG, "Error in prepareCallHierarchy: ${e.message}")
                 log.warn("Error in prepareCallHierarchy", e)
                 null
             }
         }
 
-    /** 获取调用者 (incoming calls) - 谁调用了这个方法 使用 visited set 防止循环 */
+    /** 获取调用者 (incoming calls) - 谁调用了这个方法 */
     fun getIncomingCalls(item: CallHierarchyItem): List<CallHierarchyIncomingCall> =
         ReadAction.compute<List<CallHierarchyIncomingCall>, RuntimeException> {
             try {
-                val method = findMethodByItem(item) ?: return@compute emptyList()
+                val functionInfo = findFunctionByItem(item) ?: return@compute emptyList()
                 val results = mutableListOf<CallHierarchyIncomingCall>()
                 val visited = mutableSetOf<String>()
 
+                // 使用 ReferencesSearch（通用 PSI API）
                 val scope = GlobalSearchScope.projectScope(project)
-                val references = ReferencesSearch.search(method, scope).findAll()
+                val references = ReferencesSearch.search(functionInfo.psiElement, scope).findAll()
 
-                log.debug(
-                    "getIncomingCalls: found ${references.size} references for method ${method.name}"
-                )
+                log.debug("getIncomingCalls: found ${references.size} references for function ${functionInfo.name}")
+
+                val handler = LanguageHandlerRegistry.getHandler(functionInfo.psiElement.containingFile!!)
 
                 for (reference in references) {
                     if (results.size >= MAX_RESULTS) break
 
                     val refElement = reference.element
 
-                    // 使用 UAST 向上查找父方法 (支持 Java/Kotlin)
-                    val callerMethod = findContainingMethod(refElement)
+                    // 使用 LanguageHandler 查找包含元素的方法
+                    val callerFunction = handler.findContainingFunction(refElement)
 
-                    if (callerMethod != null && callerMethod != method) {
+                    if (callerFunction != null && callerFunction.psiElement != functionInfo.psiElement) {
                         // 防止重复
-                        val key =
-                            "${callerMethod.containingClass?.qualifiedName}.${callerMethod.name}"
+                        val key = "${callerFunction.containingClass?.qualifiedName}.${callerFunction.name}"
                         if (visited.contains(key)) continue
                         visited.add(key)
 
-                        val callerDoc =
-                            callerMethod.containingFile?.let {
-                                PsiDocumentManager.getInstance(
-                                    project
-                                )
-                                    .getDocument(it)
-                            }
-                                ?: continue
+                        val callerDoc = callerFunction.psiElement.containingFile?.let {
+                            PsiDocumentManager.getInstance(project).getDocument(it)
+                        } ?: continue
 
-                        val callerItem =
-                            methodToItem(callerMethod, callerDoc)
-                                ?: continue
-                        val refRange =
-                            getElementRange(refElement, callerDoc)
-                                ?: continue
+                        val callerItem = functionInfoToItem(callerFunction, callerDoc) ?: continue
+                        val refRange = getElementRange(refElement, callerDoc) ?: continue
 
                         results.add(
                             CallHierarchyIncomingCall(
@@ -111,106 +139,52 @@ class CallHierarchyProvider(private val project: Project) {
             }
         }
 
-    /** 使用 UAST 查找包含元素的方法 (支持 Java/Kotlin) */
-    private fun findContainingMethod(element: PsiElement): PsiMethod? {
-        var current: PsiElement? = element
-        while (current != null) {
-            val uElement = current.toUElement()
-            if (uElement is UMethod) {
-                return uElement.javaPsi
-            }
-            if (current is PsiMethod) {
-                return current
-            }
-            current = current.parent
-        }
-        return null
-    }
-
-    /** 获取被调用者 (outgoing calls) - 这个方法调用了谁 使用 visited set 防止循环 */
+    /** 获取被调用者 (outgoing calls) - 这个方法调用了谁 */
     fun getOutgoingCalls(item: CallHierarchyItem): List<CallHierarchyOutgoingCall> =
         ReadAction.compute<List<CallHierarchyOutgoingCall>, RuntimeException> {
             try {
-                val method = findMethodByItem(item) ?: return@compute emptyList()
+                val functionInfo = findFunctionByItem(item) ?: return@compute emptyList()
                 val results = mutableListOf<CallHierarchyOutgoingCall>()
                 val visited = mutableSetOf<String>()
 
-                val document =
-                    method.containingFile?.let {
-                        PsiDocumentManager.getInstance(project)
-                            .getDocument(it)
+                val file = functionInfo.psiElement.containingFile ?: return@compute emptyList()
+                val document = PsiDocumentManager.getInstance(project).getDocument(file)
+                    ?: return@compute emptyList()
+
+                // 使用 LanguageHandler 获取所有调用表达式
+                val handler = LanguageHandlerRegistry.getHandler(file)
+                val callExpressions = handler.getCallExpressions(functionInfo)
+
+                log.debug("getOutgoingCalls: found ${callExpressions.size} call expressions in ${functionInfo.name}")
+
+                for (call in callExpressions) {
+                    if (results.size >= MAX_RESULTS) break
+
+                    val target = call.resolvedTarget ?: continue
+
+                    // 防止重复
+                    val key = "${target.containingClass?.qualifiedName}.${target.name}"
+                    if (visited.contains(key)) continue
+                    visited.add(key)
+
+                    val calleeDoc = target.psiElement.containingFile?.let {
+                        PsiDocumentManager.getInstance(project).getDocument(it)
                     }
-                        ?: return@compute emptyList()
 
-                // 使用 UAST 遍历方法体中的所有调用 (支持 Java/Kotlin)
-                val uMethod =
-                    method.toUElement() as? UMethod
-                        ?: return@compute emptyList()
+                    if (calleeDoc != null) {
+                        val calleeItem = functionInfoToItem(target, calleeDoc)
+                        val callRange = getElementRange(call.psiElement, document)
 
-                uMethod.accept(
-                    object : org.jetbrains.uast.visitor.AbstractUastVisitor() {
-                        override fun visitCallExpression(
-                            node: UCallExpression
-                        ): Boolean {
-                            if (results.size >= MAX_RESULTS) return true
-
-                            val callee = node.resolve()
-                            if (callee != null && callee != method) {
-                                // 防止重复
-                                val key =
-                                    "${callee.containingClass?.qualifiedName}.${callee.name}"
-                                if (visited.contains(key)) {
-                                    return false
-                                }
-                                visited.add(key)
-
-                                val calleeDoc =
-                                    callee.containingFile?.let {
-                                        PsiDocumentManager
-                                            .getInstance(
-                                                project
-                                            )
-                                            .getDocument(
-                                                it
-                                            )
-                                    }
-
-                                if (calleeDoc != null) {
-                                    val calleeItem =
-                                        methodToItem(
-                                            callee,
-                                            calleeDoc
-                                        )
-                                    val callPsi = node.sourcePsi
-                                    val callRange =
-                                        if (callPsi != null)
-                                            getElementRange(
-                                                callPsi,
-                                                document
-                                            )
-                                        else null
-
-                                    if (calleeItem != null &&
-                                        callRange !=
-                                        null
-                                    ) {
-                                        results.add(
-                                            CallHierarchyOutgoingCall(
-                                                to =
-                                                    calleeItem,
-                                                fromRanges =
-                                                    listOf(
-                                                        callRange
-                                                    )
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                            return false
+                        if (calleeItem != null && callRange != null) {
+                            results.add(
+                                CallHierarchyOutgoingCall(
+                                    to = calleeItem,
+                                    fromRanges = listOf(callRange)
+                                )
+                            )
                         }
                     }
-                )
+                }
 
                 log.debug("getOutgoingCalls: found ${results.size} callees")
                 results
@@ -220,56 +194,60 @@ class CallHierarchyProvider(private val project: Project) {
             }
         }
 
-    /** 查找父级方法 - 使用 UAST 支持 Java/Kotlin */
-    private fun findMethod(element: PsiElement): PsiMethod? {
-        // 先尝试使用 UAST 查找 (支持 Kotlin)
-        val uMethod = element.toUElementOfType<UMethod>()
-        if (uMethod != null) {
-            return uMethod.javaPsi
+    /** 根据 CallHierarchyItem 查找函数 */
+    private fun findFunctionByItem(item: CallHierarchyItem): FunctionInfo? {
+        LspLogger.debug(TAG, "findFunctionByItem: uri=${item.uri}, name=${item.name}")
+
+        val url = item.uri
+        LspLogger.debug(TAG, "findFunctionByItem: looking for file at url=$url")
+
+        val virtualFile = com.intellij.openapi.vfs.VirtualFileManager.getInstance()
+            .findFileByUrl(url)
+        if (virtualFile == null) {
+            LspLogger.warn(TAG, "findFunctionByItem: virtualFile is null for url=$url")
+            return null
         }
 
-        // 向上查找 UMethod
-        var current: PsiElement? = element
-        while (current != null) {
-            val uElement = current.toUElement()
-            if (uElement is UMethod) {
-                return uElement.javaPsi
-            }
-            if (current is PsiMethod) {
-                return current
-            }
-            current = current.parent
+        val psiFile = PsiManager.getInstance(project).findFile(virtualFile)
+        if (psiFile == null) {
+            LspLogger.warn(TAG, "findFunctionByItem: psiFile is null")
+            return null
         }
-        return null
+
+        val document = PsiDocumentManager.getInstance(project).getDocument(psiFile)
+        if (document == null) {
+            LspLogger.warn(TAG, "findFunctionByItem: document is null")
+            return null
+        }
+
+        val offset = document.getLineStartOffset(item.selectionRange.start.line) +
+                item.selectionRange.start.character
+        LspLogger.debug(TAG, "findFunctionByItem: offset=$offset, line=${item.selectionRange.start.line}")
+
+        val element = psiFile.findElementAt(offset)
+        if (element == null) {
+            LspLogger.warn(TAG, "findFunctionByItem: element is null at offset $offset")
+            return null
+        }
+
+        val handler = LanguageHandlerRegistry.getHandler(psiFile)
+        val functionInfo = handler.findContainingFunction(element)
+        if (functionInfo == null) {
+            LspLogger.warn(TAG, "findFunctionByItem: function not found")
+        } else {
+            LspLogger.debug(TAG, "findFunctionByItem: found function ${functionInfo.name}")
+        }
+        return functionInfo
     }
 
-    /** 根据 CallHierarchyItem 查找方法 */
-    private fun findMethodByItem(item: CallHierarchyItem): PsiMethod? {
-        val virtualFile =
-            com.intellij.openapi.vfs.VirtualFileManager.getInstance()
-                .findFileByUrl(item.uri.replace("file:///", "file://"))
-                ?: return null
-
-        val psiFile = PsiManager.getInstance(project).findFile(virtualFile) ?: return null
-        val document =
-            PsiDocumentManager.getInstance(project).getDocument(psiFile) ?: return null
-
-        val offset =
-            document.getLineStartOffset(item.selectionRange.start.line) +
-                    item.selectionRange.start.character
-        val element = psiFile.findElementAt(offset) ?: return null
-
-        return findMethod(element)
-    }
-
-    /** 将 PsiMethod 转换为 CallHierarchyItem */
-    private fun methodToItem(
-        method: PsiMethod,
+    /** 将 FunctionInfo 转换为 CallHierarchyItem */
+    private fun functionInfoToItem(
+        functionInfo: FunctionInfo,
         document: com.intellij.openapi.editor.Document
     ): CallHierarchyItem? {
-        val file = method.containingFile?.virtualFile ?: return null
-        val textRange = method.textRange ?: return null
-        val nameIdentifier = method.nameIdentifier ?: return null
+        val file = functionInfo.psiElement.containingFile?.virtualFile ?: return null
+        val textRange = functionInfo.psiElement.textRange ?: return null
+        val nameIdentifier = functionInfo.nameIdentifier ?: return null
         val nameRange = nameIdentifier.textRange ?: return null
 
         val startLine = document.getLineNumber(textRange.startOffset)
@@ -285,26 +263,18 @@ class CallHierarchyProvider(private val project: Project) {
         val uri = file.url.replace("file://", "file:///")
 
         return CallHierarchyItem(
-            name = method.name,
-            kind =
-                if (method.isConstructor) SymbolKind.CONSTRUCTOR
-                else SymbolKind.METHOD,
-            detail = method.containingClass?.qualifiedName,
+            name = functionInfo.name,
+            kind = if (functionInfo.isConstructor) SymbolKind.CONSTRUCTOR else SymbolKind.METHOD,
+            detail = functionInfo.containingClass?.qualifiedName,
             uri = uri,
-            range =
-                Range(
-                    start = Position(line = startLine, character = startChar),
-                    end = Position(line = endLine, character = endChar)
-                ),
-            selectionRange =
-                Range(
-                    start =
-                        Position(
-                            line = selStartLine,
-                            character = selStartChar
-                        ),
-                    end = Position(line = selEndLine, character = selEndChar)
-                )
+            range = Range(
+                start = Position(line = startLine, character = startChar),
+                end = Position(line = endLine, character = endChar)
+            ),
+            selectionRange = Range(
+                start = Position(line = selStartLine, character = selStartChar),
+                end = Position(line = selEndLine, character = selEndChar)
+            )
         )
     }
 

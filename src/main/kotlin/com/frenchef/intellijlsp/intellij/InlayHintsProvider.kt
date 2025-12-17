@@ -1,5 +1,6 @@
 package com.frenchef.intellijlsp.intellij
 
+import com.frenchef.intellijlsp.language.LanguageHandlerRegistry
 import com.frenchef.intellijlsp.protocol.models.InlayHint
 import com.frenchef.intellijlsp.protocol.models.InlayHintKinds
 import com.frenchef.intellijlsp.protocol.models.Position
@@ -9,14 +10,13 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
-import com.intellij.psi.PsiNameIdentifierOwner
 import com.intellij.psi.util.PsiTreeUtil
-import org.jetbrains.uast.*
 
 /**
- * 使用 UAST 实现的内联提示功能
+ * 内联提示 Provider
  *
- * 提供跨 Java/Kotlin 的统一类型推断和参数名提示
+ * 使用 LanguageHandler 抽象层支持多语言。
+ * 对于 JVM 语言提供完整功能（参数名 + 类型提示），其他语言安全降级。
  */
 class InlayHintsProvider(private val project: Project) {
     private val log = logger<InlayHintsProvider>()
@@ -29,17 +29,32 @@ class InlayHintsProvider(private val project: Project) {
     fun getInlayHints(psiFile: PsiFile, range: Range): List<InlayHint> {
         return ReadAction.compute<List<InlayHint>, RuntimeException> {
             try {
-                val document =
-                    PsiDocumentManager.getInstance(project).getDocument(psiFile)
-                        ?: return@compute emptyList()
+                val document = PsiDocumentManager.getInstance(project).getDocument(psiFile)
+                    ?: return@compute emptyList()
 
                 val startOffset = PsiMapper.positionToOffset(document, range.start)
                 val endOffset = PsiMapper.positionToOffset(document, range.end)
 
+                val handler = LanguageHandlerRegistry.getHandler(psiFile)
                 val hints = mutableListOf<InlayHint>()
 
-                // 遍历范围内的 PSI 元素并转换为 UAST
-                collectHintsFromPsi(psiFile, startOffset, endOffset, document, hints)
+                // 1. 收集参数名提示
+                PsiTreeUtil.collectElements(psiFile) { element ->
+                    val elRange = element.textRange
+                    elRange != null && elRange.startOffset >= startOffset && elRange.endOffset <= endOffset
+                }.forEach { element ->
+                    if (hints.size >= MAX_HINTS) return@forEach
+
+                    val callExpression = handler.findContainingCallExpression(element)
+                    if (callExpression != null && callExpression.psiElement == element) {
+                        collectParameterHints(handler, callExpression, document, hints)
+                    }
+                }
+
+                // 2. 收集类型提示
+                if (hints.size < MAX_HINTS) {
+                    collectTypeHints(handler, psiFile, startOffset, endOffset, document, hints)
+                }
 
                 log.info("Found ${hints.size} inlay hints")
                 hints.take(MAX_HINTS)
@@ -50,71 +65,27 @@ class InlayHintsProvider(private val project: Project) {
         }
     }
 
-    /** 从 PSI 收集内联提示并使用 UAST 统一处理 */
-    private fun collectHintsFromPsi(
-        psiFile: PsiFile,
-        startOffset: Int,
-        endOffset: Int,
-        document: com.intellij.openapi.editor.Document,
-        hints: MutableList<InlayHint>
-    ) {
-        // 收集方法调用的参数名提示
-        PsiTreeUtil.collectElements(psiFile) { element ->
-            val range = element.textRange
-            range != null && range.startOffset >= startOffset && range.endOffset <= endOffset
-        }
-            .forEach { element ->
-                if (hints.size >= MAX_HINTS) return@forEach
-
-                // 使用 UAST 转换
-                when (val uElement = element.toUElement()) {
-                    is UCallExpression -> collectParameterHints(uElement, document, hints)
-                    is UVariable -> {
-                        if (shouldShowTypeHint(uElement)) {
-                            collectTypeHint(uElement, document, hints)
-                        }
-                    }
-                }
-            }
-    }
-
-    /** 检查是否应该显示类型提示 */
-    private fun shouldShowTypeHint(node: UVariable): Boolean {
-        // 对于有初始化器的变量，显示类型提示
-        return node.uastInitializer != null
-    }
-
     /** 收集参数名提示 */
     private fun collectParameterHints(
-        call: UCallExpression,
+        handler: com.frenchef.intellijlsp.language.LanguageHandler,
+        callExpression: com.frenchef.intellijlsp.language.CallExpressionInfo,
         document: com.intellij.openapi.editor.Document,
         hints: MutableList<InlayHint>
     ) {
-        val method = call.resolve() ?: return
-        val uMethod = method.toUElement() as? UMethod ?: return
-        val parameters = uMethod.uastParameters
-        val arguments = call.valueArguments
+        val args = handler.getCallArgumentsInfo(callExpression)
 
-        for ((index, arg) in arguments.withIndex()) {
-            if (index >= parameters.size) break
+        for (arg in args) {
             if (hints.size >= MAX_HINTS) break
+            if (arg.isNamed) continue // 跳过已命名参数
 
-            val param = parameters[index]
-            val paramName = param.name ?: continue
-
-            // 跳过已命名参数
-            if (isNamedArgument(arg)) continue
-
-            val argPsi = arg.sourcePsi ?: continue
-            val argOffset = argPsi.textRange?.startOffset ?: continue
-
+            val argOffset = arg.psiElement.textRange?.startOffset ?: continue
             val line = document.getLineNumber(argOffset)
             val char = argOffset - document.getLineStartOffset(line)
 
             hints.add(
                 InlayHint(
                     position = Position(line = line, character = char),
-                    label = "$paramName:",
+                    label = "${arg.parameterName}:",
                     kind = InlayHintKinds.PARAMETER,
                     paddingLeft = false,
                     paddingRight = true
@@ -123,49 +94,33 @@ class InlayHintsProvider(private val project: Project) {
         }
     }
 
-    /** 检查是否为命名参数 */
-    private fun isNamedArgument(arg: UExpression): Boolean {
-        // 简化实现：检查源 PSI 是否包含 "=" 之前的标识符
-        val sourcePsi = arg.sourcePsi ?: return false
-        val text = sourcePsi.text
-        return text.contains("=") && !text.startsWith("=")
-    }
-
     /** 收集类型提示 */
-    private fun collectTypeHint(
-        variable: UVariable,
+    private fun collectTypeHints(
+        handler: com.frenchef.intellijlsp.language.LanguageHandler,
+        psiFile: PsiFile,
+        startOffset: Int,
+        endOffset: Int,
         document: com.intellij.openapi.editor.Document,
         hints: MutableList<InlayHint>
     ) {
-        val sourcePsi = variable.sourcePsi ?: return
-        val nameIdentifier = (sourcePsi as? PsiNameIdentifierOwner)?.nameIdentifier ?: return
-        val endOffset = nameIdentifier.textRange?.endOffset ?: return
+        val variables = handler.getVariablesNeedingTypeHints(psiFile, startOffset, endOffset)
 
-        val type = variable.type
-        val typeText = type.presentableText
+        for (variable in variables) {
+            if (hints.size >= MAX_HINTS) break
+            if (variable.hasExplicitType) continue // 跳过有显式类型的变量
 
-        // 跳过显式类型声明
-        if (hasExplicitType(variable)) return
+            val line = document.getLineNumber(variable.insertOffset)
+            val char = variable.insertOffset - document.getLineStartOffset(line)
 
-        val line = document.getLineNumber(endOffset)
-        val char = endOffset - document.getLineStartOffset(line)
-
-        hints.add(
-            InlayHint(
-                position = Position(line = line, character = char),
-                label = ": $typeText",
-                kind = InlayHintKinds.TYPE,
-                paddingLeft = false,
-                paddingRight = true
+            hints.add(
+                InlayHint(
+                    position = Position(line = line, character = char),
+                    label = ": ${variable.typeText}",
+                    kind = InlayHintKinds.TYPE,
+                    paddingLeft = false,
+                    paddingRight = true
+                )
             )
-        )
-    }
-
-    /** 检查变量是否有显式类型声明 */
-    private fun hasExplicitType(variable: UVariable): Boolean {
-        val sourcePsi = variable.sourcePsi ?: return true
-        val text = sourcePsi.text
-        // 简化检查：如果源代码包含类型声明语法
-        return text.contains(":") && !text.startsWith(":")
+        }
     }
 }

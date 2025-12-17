@@ -19,6 +19,14 @@ class LspProjectService(private val project: Project) : Disposable {
     private var diagnosticsHandler: DiagnosticsHandler? = null
 
     /**
+     * Whether the current client session should use LSP 3.17 Pull diagnostics (textDocument/diagnostic).
+     * If true, Push diagnostics (textDocument/publishDiagnostics) should be suppressed to avoid duplicates
+     * in clients that aggregate both sources (e.g. VSCode).
+     */
+    @Volatile
+    private var usePullDiagnostics: Boolean = false
+
+    /**
      * Get the current server status as a string.
      */
     fun getServerStatus(): String {
@@ -66,6 +74,12 @@ class LspProjectService(private val project: Project) : Disposable {
     fun getDiagnosticsHandler(): DiagnosticsHandler? {
         return diagnosticsHandler
     }
+
+    fun setUsePullDiagnostics(enabled: Boolean) {
+        usePullDiagnostics = enabled
+    }
+
+    fun isUsePullDiagnostics(): Boolean = usePullDiagnostics
 
     override fun dispose() {
         log.info("Disposing LspProjectService for project: ${project.name}")
