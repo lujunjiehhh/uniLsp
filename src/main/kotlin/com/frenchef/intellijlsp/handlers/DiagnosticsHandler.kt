@@ -9,7 +9,6 @@ import com.frenchef.intellijlsp.protocol.models.PublishDiagnosticsParams
 import com.frenchef.intellijlsp.server.LspServer
 import com.frenchef.intellijlsp.server.TcpLspServer
 import com.frenchef.intellijlsp.server.UdsLspServer
-import com.frenchef.intellijlsp.services.LspProjectService
 import com.frenchef.intellijlsp.util.LspLogger
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.openapi.application.ApplicationManager
@@ -47,10 +46,6 @@ class DiagnosticsHandler(
     // Track pending diagnostic updates per file to debounce
     private val pendingUpdates = ConcurrentHashMap<String, Job>()
 
-    private fun isPushDiagnosticsEnabled(): Boolean {
-        return !project.getService(LspProjectService::class.java).isUsePullDiagnostics()
-    }
-
     /**
      * Start listening for diagnostic updates.
      */
@@ -77,12 +72,12 @@ class DiagnosticsHandler(
     /**
      * Publish diagnostics for a specific file.
      * Uses BackgroundAnalyzer + MarkupModel + Inspection API approaches.
+     * 
+     * 注意：即使 Pull 模式启用，也需要执行分析逻辑以保持文件打开和 MarkupModel 更新。
+     * 只在最后广播诊断时检查 Push 模式是否启用。
      */
     fun publishDiagnosticsForFile(uri: String) {
-        if (!isPushDiagnosticsEnabled()) {
-            LspLogger.debug("Diagnostics", "Pull diagnostics enabled; suppressing publishDiagnostics for $uri")
-            return
-        }
+
         // Cancel any pending update for this file
         pendingUpdates[uri]?.cancel()
         
@@ -221,9 +216,6 @@ class DiagnosticsHandler(
      * Clear diagnostics for a file.
      */
     fun clearDiagnosticsForFile(uri: String) {
-        if (!isPushDiagnosticsEnabled()) {
-            return
-        }
         pendingUpdates[uri]?.cancel()
         pendingUpdates.remove(uri)
         
@@ -241,9 +233,6 @@ class DiagnosticsHandler(
      * Broadcast diagnostics to all connected clients.
      */
     private fun broadcastDiagnostics(params: PublishDiagnosticsParams) {
-        if (!isPushDiagnosticsEnabled()) {
-            return
-        }
         try {
             val gson = com.frenchef.intellijlsp.protocol.LspGson.instance
             when (server) {

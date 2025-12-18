@@ -13,7 +13,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
-import com.intellij.psi.PsiManager
 
 /**
  * Phase 10: Type Hierarchy Provider (T020)
@@ -130,35 +129,22 @@ class TypeHierarchyProvider(private val project: Project) {
     private fun findClassByItem(item: TypeHierarchyItem): ClassInfo? {
         LspLogger.debug(TAG, "findClassByItem: uri=${item.uri}, name=${item.name}")
 
-        val url = item.uri
-        val virtualFile = com.intellij.openapi.vfs.VirtualFileManager.getInstance()
-            .findFileByUrl(url)
-        if (virtualFile == null) {
-            LspLogger.warn(TAG, "findClassByItem: virtualFile is null for url=$url")
+        // 使用统一的 URI 解析器，处理大小写/编码差异
+        val resolved = LspDecompiledUriResolver.resolveForRequest(project, item.uri)
+        if (resolved == null) {
+            LspLogger.warn(TAG, "findClassByItem: URI 解析失败 for uri=${item.uri}")
             return null
         }
 
-        val psiFile = PsiManager.getInstance(project).findFile(virtualFile)
-        if (psiFile == null) {
-            LspLogger.warn(TAG, "findClassByItem: psiFile is null")
-            return null
-        }
-
-        val document = PsiDocumentManager.getInstance(project).getDocument(psiFile)
-        if (document == null) {
-            LspLogger.warn(TAG, "findClassByItem: document is null")
-            return null
-        }
-
-        val offset = document.getLineStartOffset(item.selectionRange.start.line) +
-                item.selectionRange.start.character
-        val element = psiFile.findElementAt(offset)
+        // 使用 fileText 计算 offset（确保与客户端 Position 一致）
+        val offset = PsiMapper.positionToOffset(resolved.fileText, item.selectionRange.start)
+        val element = resolved.analysisPsiFile.findElementAt(offset)
         if (element == null) {
             LspLogger.warn(TAG, "findClassByItem: element is null at offset $offset")
             return null
         }
 
-        val handler = LanguageHandlerRegistry.getHandler(psiFile)
+        val handler = LanguageHandlerRegistry.getHandler(resolved.analysisPsiFile)
         val classInfo = handler.findContainingClass(element)
         if (classInfo == null) {
             LspLogger.warn(TAG, "findClassByItem: class not found")

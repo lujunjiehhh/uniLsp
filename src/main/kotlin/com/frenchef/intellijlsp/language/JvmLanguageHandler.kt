@@ -175,9 +175,9 @@ class JvmLanguageHandler : LanguageHandler {
             val paramName = param.name ?: continue
             val argPsi = arg.sourcePsi ?: continue
 
-            // 简化的命名参数检测
-            val argText = argPsi.text
-            val isNamed = argText.contains("=") && !argText.startsWith("=")
+            // 使用 UAST 判断是否为命名参数
+            // UNamedExpression 表示 Kotlin 的命名参数语法（paramName = value）
+            val isNamed = arg is UNamedExpression
 
             results.add(
                 ArgumentInfo(
@@ -241,33 +241,95 @@ class JvmLanguageHandler : LanguageHandler {
         return results
     }
 
+    override fun getCallExpressionsInRange(file: PsiFile, startOffset: Int, endOffset: Int): List<CallExpressionInfo> {
+        val results = mutableListOf<CallExpressionInfo>()
+
+        val uFile = file.toUElement()
+        if (uFile == null) {
+            log.debug("Cannot convert file to UAST: ${file.name}")
+            return results
+        }
+
+        // 直接访问 UAST 调用表达式，避免 O(N * parent-walk)
+        uFile.accept(object : AbstractUastVisitor() {
+            override fun visitCallExpression(node: UCallExpression): Boolean {
+                val sourcePsi = node.sourcePsi ?: return false
+                val range = sourcePsi.textRange ?: return false
+
+                // 检查是否在指定范围内
+                if (range.startOffset >= startOffset && range.endOffset <= endOffset) {
+                    val resolved = node.resolve()
+                    results.add(
+                        CallExpressionInfo(
+                            psiElement = sourcePsi,
+                            methodName = node.methodName ?: "<unknown>",
+                            resolvedTarget = resolved?.let { psiMethodToFunctionInfo(it) }
+                        )
+                    )
+                }
+                return false // 继续遍历
+            }
+        })
+
+        return results
+    }
+
     /** 检查变量是否有显式类型声明 */
     private fun hasExplicitType(variable: UVariable): Boolean {
         val sourcePsi = variable.sourcePsi ?: return true
-        val text = sourcePsi.text
-        // 简化检查：如果源代码包含类型声明语法
-        return text.contains(":") && !text.startsWith(":")
+
+        // Java: 绝大多数局部变量都有显式类型（除了 `var`）
+        if (sourcePsi is PsiVariable) {
+            val typeText = sourcePsi.typeElement?.text?.trim()
+            return !typeText.isNullOrBlank() && typeText != "var"
+        }
+
+        // Kotlin/Scala 等：常见形式为 `name: Type`，这里使用变量名做一个更稳妥的启发式
+        val name = variable.name
+        if (!name.isNullOrBlank()) {
+            val pattern = Regex("\\b${Regex.escape(name)}\\s*:")
+            if (pattern.containsMatchIn(sourcePsi.text)) {
+                return true
+            }
+        }
+
+        return false
     }
 
     // ============ 辅助转换方法 ============
 
     private fun uMethodToFunctionInfo(uMethod: UMethod): FunctionInfo {
+        // 优先使用 sourcePsi（原始源代码元素），避免 Kotlin light element 定位问题
+        // javaPsi 对于 Kotlin 可能是 light element，导致 containingFile/textRange 不正确
+        val sourcePsi = uMethod.sourcePsi
         val javaPsi = uMethod.javaPsi
+
+        // 使用 sourcePsi 作为主要元素（如果可用），确保定位准确
+        val psiElement = sourcePsi ?: javaPsi
+        
         return FunctionInfo(
-            psiElement = javaPsi,
+            psiElement = psiElement,
             name = javaPsi.name,
             containingClass = javaPsi.containingClass?.let { psiClassToClassInfo(it) },
-            nameIdentifier = javaPsi.nameIdentifier,
+            // 名称标识符优先从 sourcePsi 获取
+            nameIdentifier = (sourcePsi as? PsiNameIdentifierOwner)?.nameIdentifier
+                ?: javaPsi.nameIdentifier,
             isConstructor = javaPsi.isConstructor
         )
     }
 
     private fun psiMethodToFunctionInfo(psiMethod: PsiMethod): FunctionInfo {
+        // 优先使用 navigationElement 获取源文件中的元素
+        // 这样可以避免 Kotlin light method 导致的定位问题
+        val navElement = psiMethod.navigationElement
+        val sourceElement = if (navElement !== psiMethod && navElement != null) navElement else psiMethod
+        
         return FunctionInfo(
-            psiElement = psiMethod,
+            psiElement = sourceElement,
             name = psiMethod.name,
             containingClass = psiMethod.containingClass?.let { psiClassToClassInfo(it) },
-            nameIdentifier = psiMethod.nameIdentifier,
+            nameIdentifier = (sourceElement as? PsiNameIdentifierOwner)?.nameIdentifier
+                ?: psiMethod.nameIdentifier,
             isConstructor = psiMethod.isConstructor
         )
     }

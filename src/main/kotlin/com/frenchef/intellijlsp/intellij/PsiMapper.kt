@@ -1,5 +1,6 @@
 package com.frenchef.intellijlsp.intellij
 
+import com.frenchef.intellijlsp.intellij.PsiMapper.textRangeToRange
 import com.frenchef.intellijlsp.protocol.models.Location
 import com.frenchef.intellijlsp.protocol.models.Position
 import com.frenchef.intellijlsp.protocol.models.Range
@@ -11,7 +12,6 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import java.net.URI
 import java.nio.file.Path
 
 /**
@@ -272,21 +272,22 @@ object PsiMapper {
      * 关键：缓存文件 URI 必须反查到 jar VirtualFile 才能用索引/引用搜索。
      */
     fun getPsiFile(project: com.intellij.openapi.project.Project, uri: String): PsiFile? {
+        val normalized = com.frenchef.intellijlsp.util.LspUriUtil.normalize(uri)
+
         return ReadAction.compute<PsiFile?, RuntimeException> {
             try {
                 // 缓存文件 URI → 反查到 jar VirtualFile
-                val originalVf = DecompileCache.getOriginalVirtualFile(uri)
+                val originalVf = DecompileCache.getOriginalVirtualFile(normalized)
                 val virtualFile =
                     originalVf ?: run {
-                        val rawPath = URI(uri).path ?: return@compute null
-                        val localPath =
-                            if (rawPath.length >= 3 && rawPath[0] == '/' && rawPath[2] == ':') rawPath.substring(1) else rawPath
+                        val localPath = com.frenchef.intellijlsp.util.LspUriUtil.toLocalPath(normalized)
+                            ?: return@compute null
                         LocalFileSystem.getInstance().findFileByPath(localPath)
                     } ?: return@compute null
 
                 com.intellij.psi.PsiManager.getInstance(project).findFile(virtualFile)
             } catch (e: Exception) {
-                log.warn("Failed to get PSI file for URI: $uri", e)
+                log.warn("Failed to get PSI file for URI: $uri (normalized: $normalized)", e)
                 null
             }
         }

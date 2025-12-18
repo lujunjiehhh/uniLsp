@@ -42,3 +42,12 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Project specific ###
+*.hprof
+log/
+samples/
+reference-code/
+.kilocode/
+.knowledge/
+.specify/

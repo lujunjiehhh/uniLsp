@@ -1,10 +1,11 @@
 package com.frenchef.intellijlsp.intellij
 
-import com.frenchef.intellijlsp.protocol.models.*
+import com.frenchef.intellijlsp.protocol.models.CompletionItem
+import com.frenchef.intellijlsp.protocol.models.CompletionItemKind
+import com.frenchef.intellijlsp.protocol.models.InsertTextFormat
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile

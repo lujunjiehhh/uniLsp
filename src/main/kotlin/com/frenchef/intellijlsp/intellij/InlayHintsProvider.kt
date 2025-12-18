@@ -39,15 +39,27 @@ class InlayHintsProvider(private val project: Project) {
                 val hints = mutableListOf<InlayHint>()
 
                 // 1. 收集参数名提示
-                PsiTreeUtil.collectElements(psiFile) { element ->
-                    val elRange = element.textRange
-                    elRange != null && elRange.startOffset >= startOffset && elRange.endOffset <= endOffset
-                }.forEach { element ->
-                    if (hints.size >= MAX_HINTS) return@forEach
+                // 优化：直接枚举调用表达式节点，避免 O(N * parent-walk) 复杂度
+                val callExpressions = handler.getCallExpressionsInRange(psiFile, startOffset, endOffset)
 
-                    val callExpression = handler.findContainingCallExpression(element)
-                    if (callExpression != null && callExpression.psiElement == element) {
-                        collectParameterHints(handler, callExpression, document, hints)
+                if (callExpressions.isNotEmpty()) {
+                    // 使用优化路径：handler 提供了范围内的调用表达式
+                    for (callExpr in callExpressions) {
+                        if (hints.size >= MAX_HINTS) break
+                        collectParameterHints(handler, callExpr, document, hints)
+                    }
+                } else {
+                    // 回退路径：遍历 PSI 元素（兼容未实现 getCallExpressionsInRange 的 handler）
+                    PsiTreeUtil.collectElements(psiFile) { element ->
+                        val elRange = element.textRange
+                        elRange != null && elRange.startOffset >= startOffset && elRange.endOffset <= endOffset
+                    }.forEach { element ->
+                        if (hints.size >= MAX_HINTS) return@forEach
+
+                        val callExpression = handler.findContainingCallExpression(element)
+                        if (callExpression != null && callExpression.psiElement == element) {
+                            collectParameterHints(handler, callExpression, document, hints)
+                        }
                     }
                 }
 

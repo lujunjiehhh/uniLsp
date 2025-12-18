@@ -43,6 +43,12 @@ interface LanguageHandler {
 
     /** 获取需要类型提示的变量列表（用于 inlay hints） */
     fun getVariablesNeedingTypeHints(file: PsiFile, startOffset: Int, endOffset: Int): List<VariableTypeHintInfo>
+
+    /** 获取指定范围内的所有调用表达式（用于高效收集 inlay hints） */
+    fun getCallExpressionsInRange(file: PsiFile, startOffset: Int, endOffset: Int): List<CallExpressionInfo> {
+        // 默认实现：返回空列表（各语言 handler 应该覆盖此方法以提供高效实现）
+        return emptyList()
+    }
 }
 
 /**

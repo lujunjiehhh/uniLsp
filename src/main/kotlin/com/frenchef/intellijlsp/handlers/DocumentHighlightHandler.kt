@@ -42,12 +42,16 @@ class DocumentHighlightHandler(
         try {
             val positionParams = gson.fromJson(params, TextDocumentPositionParams::class.java)
             val uri = positionParams.textDocument.uri
+            val normalizedUri = com.frenchef.intellijlsp.util.LspUriUtil.normalize(uri)
             val position = positionParams.position
             
             log.debug("Document highlight requested for $uri at line ${position.line}, char ${position.character}")
-            
-            val virtualFile = documentManager.getVirtualFile(uri) ?: return null
-            val document = documentManager.getIntellijDocument(uri) ?: return null
+            if (normalizedUri != uri) {
+                log.debug("documentHighlight uri normalize: $uri -> $normalizedUri")
+            }
+
+            val virtualFile = documentManager.getVirtualFile(normalizedUri) ?: return null
+            val document = documentManager.getIntellijDocument(normalizedUri) ?: return null
             
             val psiFile = ReadAction.compute<com.intellij.psi.PsiFile?, RuntimeException> {
                 PsiManager.getInstance(project).findFile(virtualFile)
@@ -140,13 +144,13 @@ class DocumentHighlightHandler(
                         // For Kotlin elements (KtNamedDeclaration), get the name identifier
                         val nameIdentifierMethod = targetElement.javaClass.getMethod("getNameIdentifier")
                         nameIdentifierMethod.invoke(targetElement) as? com.intellij.psi.PsiElement
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                         null
                     } ?: try {
                         // For Java elements (PsiNamedElement), get the name identifier
                         val nameIdentifierMethod = targetElement.javaClass.getMethod("getNameIdentifier")
                         nameIdentifierMethod.invoke(targetElement) as? com.intellij.psi.PsiElement
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                         null
                     } ?: targetElement
                     

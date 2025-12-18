@@ -7,6 +7,7 @@ import com.frenchef.intellijlsp.protocol.JsonRpcHandler
 import com.frenchef.intellijlsp.protocol.LspGson
 import com.frenchef.intellijlsp.protocol.models.SemanticTokensParams
 import com.frenchef.intellijlsp.protocol.models.SemanticTokensRangeParams
+import com.frenchef.intellijlsp.util.LspUriUtil
 import com.google.gson.JsonElement
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -37,18 +38,22 @@ class SemanticTokensHandler(
 
         val tokenParams = gson.fromJson(params, SemanticTokensParams::class.java)
         val uri = tokenParams.textDocument.uri
+        val normalizedUri = LspUriUtil.normalize(uri)
 
         log.info("SemanticTokens/full request for $uri")
+        if (normalizedUri != uri) {
+            log.info("SemanticTokens/full uri normalize: $uri -> $normalizedUri")
+        }
 
         return try {
             ReadAction.compute<JsonElement?, Exception> {
-                val psiFile = PsiMapper.getPsiFile(project, uri) ?: run {
-                    log.warn("Could not find PSI file for $uri")
+                val psiFile = PsiMapper.getPsiFile(project, normalizedUri) ?: run {
+                    log.warn("Could not find PSI file for $normalizedUri")
                     return@compute null
                 }
 
                 val tokens = tokensProvider.getSemanticTokens(psiFile)
-                log.info("Returning ${tokens.data.size / 5} semantic tokens for $uri")
+                log.info("Returning ${tokens.data.size / 5} semantic tokens for $normalizedUri")
                 
                 gson.toJsonTree(tokens)
             }
@@ -66,19 +71,23 @@ class SemanticTokensHandler(
 
         val rangeParams = gson.fromJson(params, SemanticTokensRangeParams::class.java)
         val uri = rangeParams.textDocument.uri
+        val normalizedUri = LspUriUtil.normalize(uri)
         val range = rangeParams.range
 
         log.info("SemanticTokens/range request for $uri (${range.start.line}-${range.end.line})")
+        if (normalizedUri != uri) {
+            log.info("SemanticTokens/range uri normalize: $uri -> $normalizedUri")
+        }
 
         return try {
             ReadAction.compute<JsonElement?, Exception> {
-                val psiFile = PsiMapper.getPsiFile(project, uri) ?: run {
-                    log.warn("Could not find PSI file for $uri")
+                val psiFile = PsiMapper.getPsiFile(project, normalizedUri) ?: run {
+                    log.warn("Could not find PSI file for $normalizedUri")
                     return@compute null
                 }
 
                 val tokens = tokensProvider.getSemanticTokensRange(psiFile, range)
-                log.info("Returning ${tokens.data.size / 5} semantic tokens for range in $uri")
+                log.info("Returning ${tokens.data.size / 5} semantic tokens for range in $normalizedUri")
                 
                 gson.toJsonTree(tokens)
             }

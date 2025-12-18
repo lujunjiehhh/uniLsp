@@ -10,6 +10,7 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
@@ -77,7 +78,7 @@ class BackgroundAnalyzer(private val project: Project) {
         val state = analyzingFiles.getOrPut(uri) { AnalysisState() }
 
         try {
-            // 在 EDT 中打开文件
+            // 在 EDT 中异步打开文件（使用 invokeLater 不阻塞调用线程）
             ApplicationManager.getApplication().invokeLater {
                 try {
                     if (project.isDisposed) return@invokeLater
@@ -97,12 +98,13 @@ class BackgroundAnalyzer(private val project: Project) {
                         // 触发分析
                         triggerAnalysis(virtualFile, uri)
 
-                        // 延迟关闭编辑器（如果是我们打开的）
-                        scheduleEditorClose(virtualFile, uri, state)
+                        // 注意：不关闭编辑器，保持文件打开以便诊断可以访问 MarkupModel
                     } else {
                         LspLogger.warn(TAG, "无法打开文件编辑器: $uri")
                     }
 
+                } catch (e: ProcessCanceledException) {
+                    throw e
                 } catch (e: Exception) {
                     LspLogger.error(TAG, "打开文件时出错: $uri - ${e.message}")
                 } finally {
@@ -111,6 +113,8 @@ class BackgroundAnalyzer(private val project: Project) {
             }
 
             return true
+        } catch (e: ProcessCanceledException) {
+            throw e
         } catch (e: Exception) {
             log.warn("Error ensuring file open for analysis: $uri", e)
             return false
@@ -118,9 +122,10 @@ class BackgroundAnalyzer(private val project: Project) {
     }
 
     /**
-     * 触发对文件的代码分析
+     * 触发对文件的代码分析（异步执行）
      */
     private fun triggerAnalysis(virtualFile: VirtualFile, uri: String) {
+        // 使用 invokeLater 异步触发，不阻塞
         ApplicationManager.getApplication().invokeLater {
             try {
                 if (project.isDisposed) return@invokeLater
@@ -129,9 +134,13 @@ class BackgroundAnalyzer(private val project: Project) {
                     val psiFile = PsiManager.getInstance(project).findFile(virtualFile)
                     if (psiFile != null) {
                         DaemonCodeAnalyzer.getInstance(project).restart(psiFile)
-                        LspLogger.debug(TAG, "已触发 DaemonCodeAnalyzer.restart(): $uri")
+                        LspLogger.info(TAG, "已触发 DaemonCodeAnalyzer.restart(): $uri")
+                    } else {
+                        LspLogger.warn(TAG, "无法找到 PsiFile: $uri")
                     }
                 }
+            } catch (e: ProcessCanceledException) {
+                throw e
             } catch (e: Exception) {
                 LspLogger.error(TAG, "触发分析时出错: $uri - ${e.message}")
             }

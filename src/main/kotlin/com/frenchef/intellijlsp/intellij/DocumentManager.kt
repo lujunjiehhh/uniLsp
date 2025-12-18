@@ -1,6 +1,7 @@
 package com.frenchef.intellijlsp.intellij
 
 import com.frenchef.intellijlsp.protocol.models.TextDocumentContentChangeEvent
+import com.frenchef.intellijlsp.util.LspUriUtil
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
@@ -114,19 +115,21 @@ class DocumentManager(private val project: Project) {
      * 如果 URI 是缓存文件，返回原始 JAR 中的 VirtualFile
      */
     fun getVirtualFile(uri: String): VirtualFile? {
+        val normalized = LspUriUtil.normalize(uri)
+
         return try {
             // 优先检查是否是反编译缓存 URI → 返回原始 JAR VirtualFile
-            val originalVf = DecompileCache.getOriginalVirtualFile(uri)
+            val originalVf = DecompileCache.getOriginalVirtualFile(normalized)
             if (originalVf != null) {
-                log.debug("缓存 URI 反向查找: $uri -> ${originalVf.url}")
+                log.debug("缓存 URI 反向查找: $normalized -> ${originalVf.url}")
                 return originalVf
             }
 
-            // 普通文件
-            val path = URI(uri).path
+            // 普通文件：客户端可能发送 file:///f%3A/...，需要先 decode 再交给 VFS
+            val path = URI(normalized).path
             VirtualFileManager.getInstance().findFileByUrl("file://$path")
         } catch (e: Exception) {
-            log.warn("Failed to get VirtualFile for URI: $uri", e)
+            log.warn("Failed to get VirtualFile for URI: $uri (normalized: $normalized)", e)
             null
         }
     }
@@ -149,10 +152,10 @@ class DocumentManager(private val project: Project) {
      * 获取磁盘上的物理文件（不做 cache→jar 反查）
      */
     private fun getPhysicalVirtualFile(uri: String): VirtualFile? {
+        val normalized = LspUriUtil.normalize(uri)
+
         return try {
-            val rawPath = URI(uri).path ?: return null
-            val localPath =
-                if (rawPath.length >= 3 && rawPath[0] == '/' && rawPath[2] == ':') rawPath.substring(1) else rawPath
+            val localPath = LspUriUtil.toLocalPath(normalized) ?: return null
 
             // First try to find in VFS (fast)
             var file = LocalFileSystem.getInstance().findFileByPath(localPath)
@@ -164,7 +167,7 @@ class DocumentManager(private val project: Project) {
 
             file
         } catch (e: Exception) {
-            log.warn("Failed to get physical VirtualFile for URI: $uri", e)
+            log.warn("Failed to get physical VirtualFile for URI: $uri (normalized: $normalized)", e)
             null
         }
     }

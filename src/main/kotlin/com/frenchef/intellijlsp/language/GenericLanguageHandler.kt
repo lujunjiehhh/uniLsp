@@ -33,7 +33,7 @@ class GenericLanguageHandler : LanguageHandler {
     }
 
     override fun getCallExpressions(function: FunctionInfo): List<CallExpressionInfo> {
-        // 通用实现：返回空列表
+        // 通用实现：返回空列表 
         // 不尝试遍历查找调用，因为没有语义信息会产生大量误报
         log.debug("GenericLanguageHandler.getCallExpressions: returning empty list (not supported)")
         return emptyList()

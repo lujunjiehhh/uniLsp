@@ -19,6 +19,7 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
@@ -64,9 +65,14 @@ class CodeActionResolveHandler(
                 return gson.toJsonTree(codeAction)
             }
 
-            log.info("Resolving CodeAction: ${codeAction.title} for ${data.uri}")
+            val normalizedUri = com.frenchef.intellijlsp.util.LspUriUtil.normalize(data.uri)
+            if (normalizedUri != data.uri) {
+                log.info("CodeAction/resolve uri normalize: ${data.uri} -> $normalizedUri")
+            }
 
-            val resolvedAction = resolveCodeAction(codeAction, data)
+            log.info("Resolving CodeAction: ${codeAction.title} for $normalizedUri")
+
+            val resolvedAction = resolveCodeAction(codeAction, data.copy(uri = normalizedUri))
             gson.toJsonTree(resolvedAction)
         } catch (e: Exception) {
             log.error("Error resolving code action", e)
@@ -198,10 +204,23 @@ class CodeActionResolveHandler(
 
                     val intentionManager = IntentionManager.getInstance()
 
-                    // 查找匹配的 intention
+                    // 不兼容的 intention 类名前缀（这些需要真实显示的编辑器）
+                    val incompatibleClassPrefixes = listOf(
+                        "com.intellij.ml.llm",           // AI Assistant
+                        "com.intellij.ai",               // AI features
+                        "com.jetbrains.rider"            // Rider specific
+                    )
+
+                    // 查找匹配的 intention，过滤掉不兼容的类型
                     val matchingIntention =
                         intentionManager.intentionActions.find { intention ->
                             try {
+                                // 过滤不兼容的 intention
+                                val className = intention.javaClass.name
+                                if (incompatibleClassPrefixes.any { className.startsWith(it) }) {
+                                    return@find false
+                                }
+                                
                                 intention.isAvailable(project, tempEditor, psiFile) &&
                                         intention.text == data.actionTitle
                             } catch (_: Exception) {
@@ -212,8 +231,13 @@ class CodeActionResolveHandler(
                     if (matchingIntention == null) {
                         log.warn("Intention not found: ${data.actionTitle}")
                     } else {
-                        // 在 EDT 中应用 action
-                        result = applyActionAndGetEdit(psiFile, document, matchingIntention, data)
+                        // 在 EDT 中应用 action，增加错误处理
+                        try {
+                            result = applyActionAndGetEdit(psiFile, document, matchingIntention, data)
+                        } catch (e: AssertionError) {
+                            // 某些 intention 需要编辑器在屏幕上显示，忽略这类错误
+                            log.debug("Intention requires visible editor: ${data.actionTitle} - ${e.message}")
+                        }
                     }
                 } finally {
                     if (tempEditor != null && !tempEditor.isDisposed) {
@@ -226,6 +250,12 @@ class CodeActionResolveHandler(
         } catch (e: com.intellij.openapi.progress.ProcessCanceledException) {
             throw e
         } catch (e: Exception) {
+            // 捕获 invokeAndWait 中包装的 RuntimeException
+            val cause = e.cause
+            if (cause is AssertionError && cause.message?.contains("Editor must be showing") == true) {
+                log.debug("Intention requires visible editor: ${data.actionTitle}")
+                return null
+            }
             log.error("Error resolving intention", e)
             return null
         }
@@ -314,6 +344,8 @@ class CodeActionResolveHandler(
                         PsiDocumentManager.getInstance(project).doPostponedOperationsAndUnblockDocument(document)
                         document.setText(originalText)
                         PsiDocumentManager.getInstance(project).commitDocument(document)
+                        // Reload from disk to sync VFS, avoid conflict prompt
+                        FileDocumentManager.getInstance().reloadFromDisk(document)
                     } catch (e: Exception) {
                         log.warn("Failed to rollback document text: ${e.message}", e)
                     }
@@ -369,12 +401,14 @@ class CodeActionResolveHandler(
                     log.warn("Failed to invoke action: ${e.message}", e)
                 } finally {
                     try {
-                        // 解锁文档（处理 PSI pending 操作）
+                        // Unlock document (handle PSI pending operations)
                         PsiDocumentManager.getInstance(project)
                             .doPostponedOperationsAndUnblockDocument(originalDocument)
-                        // 回滚：避免真实文件被改动（LSP resolve 只需要 edit）
+                        // Rollback: avoid actual file changes (LSP resolve only needs edit)
                         originalDocument.setText(originalText)
                         PsiDocumentManager.getInstance(project).commitDocument(originalDocument)
+                        // Reload from disk to sync VFS, avoid conflict prompt
+                        FileDocumentManager.getInstance().reloadFromDisk(originalDocument)
                     } catch (e: Exception) {
                         log.warn("Failed to rollback document text: ${e.message}", e)
                     }

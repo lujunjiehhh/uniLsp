@@ -24,8 +24,10 @@ dependencies {
         bundledPlugin("com.intellij.java")
         bundledPlugin("org.jetbrains.kotlin")
         bundledPlugin("JavaScript")
-        plugin("org.jetbrains.plugins.go:241.14494.240") // Go plugin for 2024.1 (adjust version if needed for 2025.1 build)
-        plugin("org.rust.lang:0.4.239.6355-241") // Rust plugin for 2024.1
+        // Go plugin is not bundled in all distributions or the gradle plugin fails to find it as bundled.
+        // Explicitly adding it as an external plugin with a version compatible with 251.
+        plugin("org.jetbrains.plugins.go:251.23774.435")
+        plugin("com.jetbrains.rust:251.25410.170")
     }
 
     // Kotlin Coroutines for async I/O
@@ -39,7 +41,10 @@ dependencies {
 
 intellijPlatform {
     pluginConfiguration {
-        ideaVersion { sinceBuild = "251" }
+        ideaVersion {
+            sinceBuild = "251"
+            untilBuild = provider { null } // Allow installation on any future version (silent compatibility)
+        }
 
         changeNotes = """
             Initial version

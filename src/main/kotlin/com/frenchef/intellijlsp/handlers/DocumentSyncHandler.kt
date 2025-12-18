@@ -43,17 +43,23 @@ class DocumentSyncHandler(
         try {
             val didOpenParams = gson.fromJson(params, DidOpenTextDocumentParams::class.java)
             val doc = didOpenParams.textDocument
-            
+
+            val normalizedUri = com.frenchef.intellijlsp.util.LspUriUtil.normalize(doc.uri)
+
             log.info("Document opened: ${doc.uri} (${doc.languageId}, version ${doc.version})")
-            
+            if (normalizedUri != doc.uri) {
+                log.info("didOpen uri normalize: ${doc.uri} -> $normalizedUri")
+            }
+
             documentManager.openDocument(
-                uri = doc.uri,
+                uri = normalizedUri,
                 languageId = doc.languageId,
                 version = doc.version,
                 text = doc.text
             )
-            
-            // Note: We could trigger diagnostics here, but we'll do that in the DiagnosticsHandler
+
+            // 文件打开时触发诊断刷新，确保主动推送高亮和诊断
+            triggerDiagnosticsRefresh(normalizedUri)
             
         } catch (e: Exception) {
             log.error("Error handling didOpen", e)
@@ -73,18 +79,44 @@ class DocumentSyncHandler(
         try {
             val didChangeParams = gson.fromJson(params, DidChangeTextDocumentParams::class.java)
             val doc = didChangeParams.textDocument
-            
-            log.debug("Document changed: ${doc.uri} (version ${doc.version}, ${didChangeParams.contentChanges.size} changes)")
-            
+
+            val normalizedUri = com.frenchef.intellijlsp.util.LspUriUtil.normalize(doc.uri)
+
+            log.debug(
+                "Document changed: ${doc.uri} (version ${doc.version}, ${didChangeParams.contentChanges.size} changes)"
+            )
+            if (normalizedUri != doc.uri) {
+                log.info("didChange uri normalize: ${doc.uri} -> $normalizedUri")
+            }
+
             documentManager.changeDocument(
-                uri = doc.uri,
+                uri = normalizedUri,
                 version = doc.version,
                 changes = didChangeParams.contentChanges
             )
 
+            // Debug instrumentation: verify whether IntelliJ Document stays in sync with LSP didChange.
+            // If IntelliJ Document is stale, semantic tokens/highlighting computed from PSI/Document will also be stale.
+            run {
+                val tracked = documentManager.getDocumentContent(normalizedUri)
+                val trackedLen = tracked?.length
+                val ideaDoc = documentManager.getIntellijDocument(normalizedUri)
+                val ideaLen = ideaDoc?.textLength
+                val ideaStamp = ideaDoc?.modificationStamp
+
+                log.debug(
+                    "didChange sync-check: trackedLen=$trackedLen, ideaLen=$ideaLen, ideaStamp=$ideaStamp, trackedVersion=${doc.version}"
+                )
+
+                if (trackedLen != null && ideaLen != null && trackedLen != ideaLen) {
+                    log.warn(
+                        "didChange sync-check mismatch: IntelliJ Document length differs from tracked content; highlighting may be stale"
+                    )
+                }
+            }
+
             // Trigger diagnostics refresh for this file
-            triggerDiagnosticsRefresh(doc.uri)
-            
+            triggerDiagnosticsRefresh(normalizedUri)
         } catch (e: Exception) {
             log.error("Error handling didChange", e)
         }
@@ -103,10 +135,14 @@ class DocumentSyncHandler(
         try {
             val didCloseParams = gson.fromJson(params, DidCloseTextDocumentParams::class.java)
             val uri = didCloseParams.textDocument.uri
-            
+            val normalizedUri = com.frenchef.intellijlsp.util.LspUriUtil.normalize(uri)
+
             log.info("Document closed: $uri")
-            
-            documentManager.closeDocument(uri)
+            if (normalizedUri != uri) {
+                log.info("didClose uri normalize: $uri -> $normalizedUri")
+            }
+
+            documentManager.closeDocument(normalizedUri)
             
         } catch (e: Exception) {
             log.error("Error handling didClose", e)
@@ -126,14 +162,18 @@ class DocumentSyncHandler(
         try {
             val didSaveParams = gson.fromJson(params, DidSaveTextDocumentParams::class.java)
             val uri = didSaveParams.textDocument.uri
-            
+            val normalizedUri = com.frenchef.intellijlsp.util.LspUriUtil.normalize(uri)
+
             log.info("Document saved: $uri")
-            
-            documentManager.saveDocument(uri)
-            
+            if (normalizedUri != uri) {
+                log.info("didSave uri normalize: $uri -> $normalizedUri")
+            }
+
+            documentManager.saveDocument(normalizedUri)
+
             // After save, IntelliJ will re-parse the file and update its analysis
             // Trigger diagnostics refresh
-            triggerDiagnosticsRefresh(uri)
+            triggerDiagnosticsRefresh(normalizedUri)
             
         } catch (e: Exception) {
             log.error("Error handling didSave", e)
@@ -144,11 +184,12 @@ class DocumentSyncHandler(
      * Trigger diagnostics refresh for a file.
      */
     private fun triggerDiagnosticsRefresh(uri: String) {
+        val normalizedUri = com.frenchef.intellijlsp.util.LspUriUtil.normalize(uri)
         try {
             val projectService = project.getService(LspProjectService::class.java)
-            projectService?.getDiagnosticsHandler()?.publishDiagnosticsForFile(uri)
+            projectService?.getDiagnosticsHandler()?.publishDiagnosticsForFile(normalizedUri)
         } catch (e: Exception) {
-            log.warn("Error triggering diagnostics refresh for $uri", e)
+            log.warn("Error triggering diagnostics refresh for $normalizedUri", e)
         }
     }
 }

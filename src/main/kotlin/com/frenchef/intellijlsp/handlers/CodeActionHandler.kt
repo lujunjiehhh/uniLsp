@@ -40,15 +40,19 @@ class CodeActionHandler(
         return try {
             val codeActionParams = gson.fromJson(params, CodeActionParams::class.java)
             val uri = codeActionParams.textDocument.uri
+            val normalizedUri = com.frenchef.intellijlsp.util.LspUriUtil.normalize(uri)
             val range = codeActionParams.range
             val context = codeActionParams.context
 
             log.info("CodeAction requested for $uri at range $range")
+            if (normalizedUri != uri) {
+                log.info("CodeAction uri normalize: $uri -> $normalizedUri")
+            }
 
             val virtualFile =
-                documentManager.getVirtualFile(uri)
+                documentManager.getVirtualFile(normalizedUri)
                     ?: run {
-                        log.warn("CodeAction: Virtual file not found for $uri")
+                        log.warn("CodeAction: Virtual file not found for $normalizedUri")
                         return gson.toJsonTree(emptyList<CodeAction>())
                     }
 
@@ -61,7 +65,7 @@ class CodeActionHandler(
                         return gson.toJsonTree(emptyList<CodeAction>())
                     }
 
-            val actions = codeActionProvider.getCodeActions(psiFile, range, context, uri)
+            val actions = codeActionProvider.getCodeActions(psiFile, range, context, normalizedUri)
 
             log.info("CodeAction: Returning ${actions.size} action(s)")
 

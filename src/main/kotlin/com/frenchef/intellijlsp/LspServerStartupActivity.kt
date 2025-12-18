@@ -128,15 +128,6 @@ class LspServerStartupActivity : ProjectActivity {
             // Store diagnostics handler in project service for access by other handlers
             projectService.setDiagnosticsHandler(diagnosticsHandler)
 
-            // Register documentDiagnostic handler (Pull 模式 - LSP 3.17)
-            val documentDiagnosticHandler =
-                com.frenchef.intellijlsp.handlers.DocumentDiagnosticHandler(
-                    project,
-                    jsonRpcHandler,
-                    documentManager
-                )
-            documentDiagnosticHandler.register()
-
             // Register typeDefinition handler (abcoder 兼容)
             val typeDefinitionHandler =
                 com.frenchef.intellijlsp.handlers.TypeDefinitionHandler(
